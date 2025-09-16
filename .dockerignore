@@ -33,6 +33,6 @@ LICENSE
 # 开发和调试文件
 .DS_Store
 .cursorrules
-
+.gitignore
 # 图片目录
 images/ 

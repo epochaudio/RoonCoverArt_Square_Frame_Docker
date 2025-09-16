@@ -75,6 +75,8 @@ if (options.port) {
 var express = require("express");
 var http = require("http");
 var bodyParser = require("body-parser");
+const fs = require("fs").promises;
+const { saveArtwork, getImageStats } = require("./utils/imageUtils");
 
 var app = express();
 app.use(express.static("public", {
@@ -140,7 +142,7 @@ function makelayout(settings) {
 var roon = new RoonApi({
     extension_id:        "com.epochaudio.coverart",
     display_name:        "Cover Art",
-    display_version:     "3.0.6",
+    display_version:     "3.1.3",
     publisher:           "门耳朵制作",
     email:              "masked",
     website:            "https://shop236654229.taobao.com/",
@@ -149,6 +151,11 @@ var roon = new RoonApi({
         console.log('Roon Core 配对成功');
         core = _core;
         pairStatus = true;
+        
+        // 更新连接管理器状态
+        if (connectionManager) {
+            connectionManager.setCore(_core);
+        }
 
         // 初始化 transport 服务
         transport = _core.services.RoonApiTransport;
@@ -158,8 +165,10 @@ var roon = new RoonApi({
             return;
         }
 
-        // 订阅 zones 变化
-        transport.subscribe_zones((cmd, data) => {
+        // 使用订阅管理器订阅zones变化
+        if (subscriptionManager) {
+            try {
+                subscriptionManager.subscribe(transport, 'zones', (cmd, data) => {
             console.log('收到zones订阅响应:', cmd, data);
             
             try {
@@ -178,6 +187,7 @@ var roon = new RoonApi({
                         }
                     }
                     
+                    // 发送所有可用的zones，让用户手动选择
                     io.emit("zoneStatus", zoneStatus);
                 } else if (cmd == "Changed") {
                     // 处理 zones 变化
@@ -229,6 +239,10 @@ var roon = new RoonApi({
                 console.error('处理zones更新时出错:', err);
             }
         });
+            } catch (err) {
+                console.error('订阅zones失败:', err);
+            }
+        }
 
         // 通知客户端
         io.emit("pairStatus", { pairEnabled: true });
@@ -237,6 +251,28 @@ var roon = new RoonApi({
 
     core_unpaired: function(_core) {
         console.log('Roon Core 配对断开');
+        
+        // 清理可能无效的token
+        if (_core && _core.core_id) {
+            try {
+                const roonstate = roon.load_config("roonstate") || {};
+                if (roonstate.tokens && roonstate.tokens[_core.core_id]) {
+                    console.log('检测到配对断开，清理可能无效的token:', _core.core_id);
+                    delete roonstate.tokens[_core.core_id];
+                    
+                    // 如果这是当前配对的core，也清理paired_core_id
+                    if (roonstate.paired_core_id === _core.core_id) {
+                        delete roonstate.paired_core_id;
+                        console.log('清理当前配对的core_id');
+                    }
+                    
+                    roon.save_config("roonstate", roonstate);
+                    console.log('无效token已清理');
+                }
+            } catch (error) {
+                console.error('清理token时出错:', error);
+            }
+        }
         
         // 重置状态
         core = null;
@@ -248,6 +284,14 @@ var roon = new RoonApi({
         // 通知客户端
         io.emit("pairStatus", { pairEnabled: false });
         svc_status.set_status("等待配对", true);
+        
+        // 触发连接管理器重连（如果有的话）
+        if (connectionManager) {
+            console.log('配对断开，启动自动重连机制');
+            setTimeout(() => {
+                connectionManager.startReconnect();
+            }, 2000); // 延迟2秒再开始重连
+        }
     }
 });
 
@@ -299,40 +343,6 @@ settings = roon.load_config("settings") || {
 
 // 开始发现 Roon Core
 roon.start_discovery();
-
-// Remove duplicates from zoneList array
-function removeDuplicateList(array, property) {
-  var x;
-  var new_array = [];
-  var lookup = {};
-  for (x in array) {
-    lookup[array[x][property]] = array[x];
-  }
-
-  for (x in lookup) {
-    new_array.push(lookup[x]);
-  }
-
-  zoneList = new_array;
-  io.emit("zoneList", zoneList);
-}
-
-// Remove duplicates from zoneStatus array
-function removeDuplicateStatus(array, property) {
-  var x;
-  var new_array = [];
-  var lookup = {};
-  for (x in array) {
-    lookup[array[x][property]] = array[x];
-  }
-
-  for (x in lookup) {
-    new_array.push(lookup[x]);
-  }
-
-  zoneStatus = new_array;
-  io.emit("zoneStatus", zoneStatus);
-}
 
 function refresh_browse(zone_id, options, callback) {
   options = Object.assign(
@@ -443,6 +453,44 @@ io.on("connection", function(socket) {
   socket.on("goStop", function(msg) {
     transport.control(msg, "stop");
   });
+
+  // 键盘快捷键传输控制处理器
+  socket.on("transport", function(msg) {
+    console.log('收到传输控制命令:', msg);
+    
+    if (!msg.zoneID) {
+      console.warn('未提供zoneID，无法执行传输控制');
+      return;
+    }
+    
+    // 构造传输控制消息
+    const transportMsg = {
+      zone_id: msg.zoneID
+    };
+    
+    switch (msg.command) {
+      case 'playpause':
+        transport.control(transportMsg, "playpause");
+        break;
+      case 'play':
+        transport.control(transportMsg, "play");
+        break;
+      case 'pause':
+        transport.control(transportMsg, "pause");
+        break;
+      case 'stop':
+        transport.control(transportMsg, "stop");
+        break;
+      case 'previous':
+        transport.control(transportMsg, "previous");
+        break;
+      case 'next':
+        transport.control(transportMsg, "next");
+        break;
+      default:
+        console.warn('未知的传输控制命令:', msg.command);
+    }
+  });
 });
 
 // Web Routes
@@ -488,18 +536,8 @@ app.get("/roonapi/getImage", function(req, res) {
       
       if (autoSave && req.query.albumName) {
         try {
-          // 检查是否已经保存过这个image_key
-          const saveDir = config.has('artwork.saveDir') ? config.get('artwork.saveDir') : './images';
-          const files = await fs.readdir(saveDir);
-          const imageKeyExists = files.some(file => file.includes(req.query.image_key));
-          
-          if (!imageKeyExists) {
-            console.log('开始保存专辑封面:', req.query.albumName);
-            await saveArtwork(body, req.query.albumName, req.query.image_key);
-            console.log('专辑封面保存成功');
-          } else {
-            console.log('该图片已经保存过:', req.query.image_key);
-          }
+          console.log('开始保存专辑封面:', req.query.albumName);
+          await saveArtwork(body, req.query.albumName);
         } catch (error) {
           console.error('保存专辑封面时出错:', error);
         }
@@ -626,47 +664,394 @@ app.get("/api/zones", function(req, res) {
     res.json(zoneStatus);
 });
 
-const fs = require('fs').promises;
-const path = require('path');
+// =========================== EventEmitter 基类 ===========================
 
-async function saveArtwork(imageData, albumName, imageKey) {
-    try {
-        const saveDir = config.has('artwork.saveDir') ? config.get('artwork.saveDir') : './images';
-        const format = config.has('artwork.format') ? config.get('artwork.format') : 'jpg';
-        
-        // 确保目录存在
-        await fs.mkdir(saveDir, { recursive: true });
-        
-        // 清理文件名
-        const safeAlbumName = albumName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        
-        // 使用image_key和专辑名组合成文件名
-        const fileName = `${safeAlbumName}_${imageKey}.${format}`;
-        const filePath = path.join(saveDir, fileName);
-        
-        // 保存文件
-        await fs.writeFile(filePath, imageData);
-        console.log(`保存专辑封面: ${fileName}`);
-        
-    } catch (error) {
-        console.error('保存专辑封面失败:', error);
-        throw error;
+class EventEmitter {
+    constructor() {
+        this.events = {};
+    }
+
+    on(event, callback) {
+        if (!this.events[event]) {
+            this.events[event] = [];
+        }
+        this.events[event].push(callback);
+    }
+
+    emit(event, data) {
+        const callbacks = this.events[event];
+        if (callbacks) {
+            callbacks.forEach(callback => callback(data));
+        }
+    }
+
+    off(event, callback) {
+        const callbacks = this.events[event];
+        if (callbacks) {
+            this.events[event] = callbacks.filter(cb => cb !== callback);
+        }
     }
 }
 
-async function getImageStats(directory) {
-    try {
-        await fs.mkdir(directory, { recursive: true });
-        const files = await fs.readdir(directory);
-        const imageFiles = files.filter(file => /\.(jpg|jpeg|png)$/i.test(file));
+// =========================== 优化的管理类 ===========================
+
+// 连接状态管理器
+class RoonConnectionManager extends EventEmitter {
+    constructor() {
+        super();
+        this.state = 'disconnected'; // disconnected, connecting, paired
+        this.core = null;
+        this.reconnectTimer = null;
+        this.maxReconnectAttempts = 5;
+        this.currentReconnectAttempt = 0;
+        this.reconnectInterval = 5000;
+        this.lastConnectedTime = null;
+    }
+    
+    setState(newState) {
+        const oldState = this.state;
+        this.state = newState;
+        console.log(`连接状态变化: ${oldState} -> ${newState}`);
+        this.emit('stateChange', { oldState, newState });
+    }
+    
+    setCore(core) {
+        this.core = core;
+        if (core) {
+            this.lastConnectedTime = Date.now();
+            this.stopReconnect();
+            this.setState('paired');
+        } else {
+            this.setState('disconnected');
+        }
+    }
+    
+    startReconnect() {
+        if (this.reconnectTimer) return;
         
+        console.log('启动自动重连机制');
+        this.setState('connecting');
+        
+        this.reconnectTimer = setInterval(() => {
+            if (this.currentReconnectAttempt >= this.maxReconnectAttempts) {
+                console.log(`重连失败，已达到最大尝试次数 ${this.maxReconnectAttempts}`);
+                this.stopReconnect();
+                this.setState('disconnected');
+                this.emit('reconnectFailed');
+                return;
+            }
+            
+            this.currentReconnectAttempt++;
+            console.log(`重连尝试 ${this.currentReconnectAttempt}/${this.maxReconnectAttempts}`);
+            
+            // 重新开始发现
+            roon.start_discovery();
+        }, this.reconnectInterval);
+    }
+    
+    stopReconnect() {
+        if (this.reconnectTimer) {
+            console.log('停止自动重连');
+            clearInterval(this.reconnectTimer);
+            this.reconnectTimer = null;
+            this.currentReconnectAttempt = 0;
+        }
+    }
+    
+    getConnectionInfo() {
         return {
-            totalImages: imageFiles.length,
-            lastSaved: imageFiles.length > 0 ? 
-                (await fs.stat(path.join(directory, imageFiles[imageFiles.length - 1]))).mtime : null
+            state: this.state,
+            lastConnectedTime: this.lastConnectedTime,
+            reconnectAttempts: this.currentReconnectAttempt,
+            isReconnecting: !!this.reconnectTimer
         };
-    } catch (error) {
-        console.error('获取图片统计信息失败:', error);
-        throw error;
     }
 }
+
+// 订阅管理器
+class SubscriptionManager {
+    constructor() {
+        this.subscriptions = new Map();
+    }
+    
+    subscribe(service, type, callback, options = {}) {
+        const key = `${service.constructor.name}-${type}`;
+        console.log(`订阅服务: ${key}`);
+        
+        // 如果已存在订阅，先取消
+        if (this.subscriptions.has(key)) {
+            this.unsubscribe(key);
+        }
+        
+        try {
+            const subscribeMethod = `subscribe_${type}`;
+            if (typeof service[subscribeMethod] !== 'function') {
+                throw new Error(`服务不支持订阅类型: ${type}`);
+            }
+            
+            const subscription = service[subscribeMethod](callback);
+            this.subscriptions.set(key, {
+                subscription,
+                service,
+                type,
+                callback,
+                options,
+                createdAt: Date.now()
+            });
+            
+            return key;
+        } catch (error) {
+            console.error(`订阅失败 ${key}:`, error);
+            throw error;
+        }
+    }
+    
+    unsubscribe(key) {
+        const sub = this.subscriptions.get(key);
+        if (sub) {
+            try {
+                console.log(`取消订阅: ${key}`);
+                const unsubscribeMethod = `unsubscribe_${sub.type}`;
+                if (typeof sub.service[unsubscribeMethod] === 'function') {
+                    sub.service[unsubscribeMethod](sub.subscription);
+                }
+                this.subscriptions.delete(key);
+                return true;
+            } catch (error) {
+                console.error(`取消订阅失败 ${key}:`, error);
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    unsubscribeAll() {
+        console.log(`取消所有订阅 (${this.subscriptions.size} 个)`);
+        const keys = Array.from(this.subscriptions.keys());
+        let successCount = 0;
+        
+        keys.forEach(key => {
+            if (this.unsubscribe(key)) {
+                successCount++;
+            }
+        });
+        
+        console.log(`成功取消 ${successCount}/${keys.length} 个订阅`);
+        return successCount;
+    }
+    
+    getSubscriptionInfo() {
+        const subscriptions = [];
+        for (const [key, sub] of this.subscriptions) {
+            subscriptions.push({
+                key,
+                type: sub.type,
+                service: sub.service.constructor.name,
+                createdAt: sub.createdAt,
+                uptime: Date.now() - sub.createdAt
+            });
+        }
+        return subscriptions;
+    }
+}
+
+// 配置管理器
+class ConfigManager {
+    constructor(roon) {
+        this.roon = roon;
+        this.configVersion = '1.0';
+        this.defaultConfig = {
+            output: undefined,
+            preferences: {
+                autoReconnect: true,
+                reconnectInterval: 5000,
+                healthCheckInterval: 30000
+            }
+        };
+    }
+    
+    async saveConfig(key, data) {
+        try {
+            const configData = {
+                ...data,
+                version: this.configVersion,
+                timestamp: Date.now()
+            };
+            
+            console.log(`保存配置: ${key}`);
+            this.roon.save_config(key, configData);
+            
+            // 验证保存
+            const saved = this.roon.load_config(key);
+            if (!saved || saved.timestamp !== configData.timestamp) {
+                throw new Error('配置保存验证失败');
+            }
+            
+            console.log(`配置保存成功: ${key}`);
+            return true;
+        } catch (error) {
+            console.error(`保存配置失败 ${key}:`, error);
+            return false;
+        }
+    }
+    
+    loadConfig(key) {
+        try {
+            const config = this.roon.load_config(key);
+            if (!config) {
+                console.log(`配置不存在，使用默认配置: ${key}`);
+                return this.defaultConfig;
+            }
+            
+            // 检查版本兼容性
+            if (config.version !== this.configVersion) {
+                console.log(`配置版本不匹配，迁移配置: ${config.version} -> ${this.configVersion}`);
+                return this.migrateConfig(config);
+            }
+            
+            console.log(`加载配置成功: ${key}`);
+            return config;
+        } catch (error) {
+            console.error(`加载配置失败 ${key}:`, error);
+            return this.defaultConfig;
+        }
+    }
+    
+    migrateConfig(oldConfig) {
+        // 配置迁移逻辑
+        const migratedConfig = {
+            ...this.defaultConfig,
+            ...oldConfig,
+            version: this.configVersion,
+            timestamp: Date.now()
+        };
+        
+        console.log('配置迁移完成');
+        return migratedConfig;
+    }
+}
+
+// 健康监控器
+class HealthMonitor extends EventEmitter {
+    constructor(connectionManager) {
+        super();
+        this.connectionManager = connectionManager;
+        this.healthCheckInterval = null;
+        this.lastPingTime = null;
+        this.checkInterval = 30000; // 30秒
+        this.failureCount = 0;
+        this.maxFailures = 3;
+    }
+    
+    startHealthCheck() {
+        if (this.healthCheckInterval) return;
+        
+        console.log(`启动健康检查 (间隔: ${this.checkInterval}ms)`);
+        this.healthCheckInterval = setInterval(() => {
+            this.pingCore();
+        }, this.checkInterval);
+    }
+    
+    stopHealthCheck() {
+        if (this.healthCheckInterval) {
+            console.log('停止健康检查');
+            clearInterval(this.healthCheckInterval);
+            this.healthCheckInterval = null;
+            this.failureCount = 0;
+        }
+    }
+    
+    async pingCore() {
+        try {
+            if (!this.connectionManager.core || !this.connectionManager.core.services) {
+                throw new Error('Core不可用');
+            }
+            
+            // 简单的健康检查 - 检查transport服务
+            const transport = this.connectionManager.core.services.RoonApiTransport;
+            if (!transport) {
+                throw new Error('Transport服务不可用');
+            }
+            
+            this.lastPingTime = Date.now();
+            this.failureCount = 0;
+            this.emit('healthCheck', { 
+                status: 'ok', 
+                timestamp: this.lastPingTime,
+                uptime: this.lastPingTime - this.connectionManager.lastConnectedTime
+            });
+            
+        } catch (error) {
+            this.failureCount++;
+            console.error(`健康检查失败 (${this.failureCount}/${this.maxFailures}):`, error.message);
+            
+            this.emit('healthCheck', { 
+                status: 'error', 
+                error: error.message,
+                failureCount: this.failureCount,
+                timestamp: Date.now()
+            });
+            
+            // 如果连续失败次数达到阈值，触发重连
+            if (this.failureCount >= this.maxFailures) {
+                console.log('健康检查连续失败，触发重连');
+                this.connectionManager.startReconnect();
+                this.stopHealthCheck();
+            }
+        }
+    }
+    
+    getHealthStatus() {
+        return {
+            isRunning: !!this.healthCheckInterval,
+            lastPingTime: this.lastPingTime,
+            failureCount: this.failureCount,
+            maxFailures: this.maxFailures,
+            checkInterval: this.checkInterval
+        };
+    }
+}
+
+// =========================== 初始化优化管理器 ===========================
+
+// 声明管理器变量
+var connectionManager = null;
+var subscriptionManager = null;
+var configManager = null;
+var healthMonitor = null;
+
+// 在这里初始化管理器（在所有类定义之后）
+function initializeManagers() {
+    console.log('初始化优化管理器...');
+    
+    // 初始化管理器实例
+    connectionManager = new RoonConnectionManager();
+    subscriptionManager = new SubscriptionManager();
+    configManager = new ConfigManager(roon);
+    healthMonitor = new HealthMonitor(connectionManager);
+
+    // 设置事件监听
+    connectionManager.on('stateChange', (data) => {
+        console.log(`连接状态变化: ${data.oldState} -> ${data.newState}`);
+        io.emit("connectionStatus", {
+            state: data.newState,
+            info: connectionManager.getConnectionInfo()
+        });
+    });
+
+    connectionManager.on('reconnectFailed', () => {
+        console.log('自动重连失败，请检查Roon Core状态');
+        svc_status.set_status("自动重连失败", true);
+    });
+
+    healthMonitor.on('healthCheck', (data) => {
+        if (data.status === 'error') {
+            console.log(`健康检查失败: ${data.error}`);
+        }
+    });
+
+    console.log('优化管理器初始化完成');
+}
+
+// 延迟初始化，确保所有类都已定义
+setTimeout(initializeManagers, 100);

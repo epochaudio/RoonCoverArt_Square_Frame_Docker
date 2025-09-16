@@ -10,11 +10,21 @@ RUN npm install
 
 COPY . .
 
-# 创建images目录并设置权限
-RUN mkdir -p /app/images && \
-    chown -R node:node /app/images
+# 确保node用户存在且UID为1000
+RUN addgroup -g 1000 node || true && \
+    adduser -u 1000 -G node -s /bin/sh -D node || true
 
-# 切换到非root用户
+# 在构建时创建必要的目录和配置文件
+RUN mkdir -p /app/images && \
+    touch /app/config.json && \
+    echo '{}' > /app/config.json
+
+# 设置正确的所有者和权限
+RUN chown -R node:node /app && \
+    chmod 755 /app/images && \
+    chmod 644 /app/config.json
+
+# 以非root用户运行应用
 USER node
 
 EXPOSE 3666

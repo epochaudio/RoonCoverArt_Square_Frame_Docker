@@ -4,12 +4,10 @@
 const socket = io();
 let currentImageKey = null;
 let mouseTimer;
-const imageCache = new Map();  // 图片缓存池
-const maxPoolSize = 30;       // 最大缓存数量
 const IMAGE_TIMEOUT = 10000;  // 图片加载超时时间（10秒）
 let updateInterval = null;
 let playbackTimer = null;
-const GRID_UPDATE_INTERVAL = 60000; // 60秒更新周期
+const GRID_UPDATE_INTERVAL = 120000; // 120秒更新周期
 const IMAGES_TO_UPDATE = 3; // 每次更新3张图片
 
 // 设置相关
@@ -29,8 +27,8 @@ const css = {
 class ImageLoader {
     constructor() {
         this.imagePool = new Map();
-        this.maxPoolSize = 30;  // 最大缓存数量
-        this.loadTimeout = 10000;  // 10秒超时
+        this.maxPoolSize = 25;  // 降低缓存数量，16个网格+9个预留
+        this.loadTimeout = 8000;  // 8秒超时
     }
 
     loadImage(url) {
@@ -67,8 +65,12 @@ class ImageLoader {
             console.log('清理图片缓存池');
             const entries = Array.from(this.imagePool.entries());
             const toRemove = entries.slice(0, entries.length - this.maxPoolSize);
-            toRemove.forEach(([url]) => {
+            toRemove.forEach(([url, img]) => {
                 console.log('从缓存池移除:', url);
+                // 显式清理图片资源
+                img.src = '';
+                img.onload = null;
+                img.onerror = null;
                 this.imagePool.delete(url);
             });
         }
@@ -77,6 +79,9 @@ class ImageLoader {
 
 // 创建全局图片加载器实例
 const imageLoader = new ImageLoader();
+
+// 创建键盘控制器实例
+let keyboardController = null;
 
 // 修改现有的图片加载相关函数
 async function loadImage(url) {
@@ -92,16 +97,44 @@ async function loadImage(url) {
 function monitorMemory() {
     if (window.performance && window.performance.memory) {
         const memory = window.performance.memory;
+        const usedMB = Math.round(memory.usedJSHeapSize / 1024 / 1024);
+        const limitMB = Math.round(memory.jsHeapSizeLimit / 1024 / 1024);
+        
         console.log('内存使用情况:', {
-            限制: Math.round(memory.jsHeapSizeLimit / 1024 / 1024) + 'MB',
-            已分配: Math.round(memory.totalJSHeapSize / 1024 / 1024) + 'MB',
-            已使用: Math.round(memory.usedJSHeapSize / 1024 / 1024) + 'MB'
+            限制: limitMB + 'MB',
+            已使用: usedMB + 'MB',
+            使用率: Math.round((memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100) + '%'
         });
 
-        if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.8) {
+        // 降低内存阈值到60%
+        if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.6) {
             console.log('内存使用过高，开始清理');
-            imageLoader.cleanImagePool();
+            forceCleanup();
         }
+    }
+}
+
+// 强制清理函数
+function forceCleanup() {
+    console.log('执行强制内存清理');
+    
+    // 清理图片缓存
+    imageLoader.cleanImagePool();
+    
+    // 清理显示缓存
+    if (typeof displayImageCache !== 'undefined') {
+        displayImageCache.clear();
+        displayCacheSize = 0;
+    }
+    
+    // 清理DOM中的空图片
+    document.querySelectorAll('img[src*="transparent.png"]').forEach(img => {
+        img.removeAttribute('src');
+    });
+    
+    // 强制垃圾回收
+    if (window.gc) {
+        window.gc();
     }
 }
 
@@ -126,23 +159,11 @@ function isTouchDevice() {
         (navigator.msMaxTouchPoints > 0));
 }
 
-function isIOS() {
-    return [
-        'iPad Simulator',
-        'iPhone Simulator',
-        'iPod Simulator',
-        'iPad',
-        'iPhone',
-        'iPod'
-    ].includes(navigator.platform)
-    || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
-}
-
 // 时钟功能
 function updateTime() {
     const clockContent = document.querySelector('.clock-content');
     if (!clockContent) {
-        console.error('找不到时钟元素');
+        // 时钟元素不存在时静默返回（专辑显示模式下是正常的）
         return;
     }
     
@@ -214,9 +235,9 @@ async function initializeGridDisplay() {
 
     try {
         await updateGridImages();
-        // 设置60秒更新间隔
-        updateInterval = setInterval(updateRandomImages, 60000);
-        console.log('设置了定时更新，间隔: 60秒');
+        // 设置120秒更新间隔
+        updateInterval = setInterval(updateRandomImages, GRID_UPDATE_INTERVAL);
+        console.log('设置了定时更新，间隔: 120秒');
     } catch (error) {
         console.error('初始化网格显示失败:', error);
         attemptRecovery();
@@ -243,13 +264,13 @@ async function updateGridImages() {
     const selectedImages = [];
     const usedIndices = new Set();
     
-    while (selectedImages.length < 8) {
+    while (selectedImages.length < 16) {
         const randomIndex = Math.floor(Math.random() * images.length);
         if (!usedIndices.has(randomIndex)) {
             usedIndices.add(randomIndex);
             selectedImages.push(images[randomIndex]);
         }
-        if (usedIndices.size === images.length && selectedImages.length < 8) {
+        if (usedIndices.size === images.length && selectedImages.length < 16) {
             usedIndices.clear();
         }
     }
@@ -304,12 +325,12 @@ async function updateRandomImages() {
         });
         console.log('当前显示的图片:', currentImages);
 
-        // 随机选择3个不同位置进行更新
+        // 随机选择5个不同位置进行更新
         const positions = Array.from({ length: gridItems.length }, (_, i) => i)
             .filter(i => !gridItems[i].closest('.clock')); // 排除时钟位置
         
         const updatePositions = [];
-        for (let i = 0; i < 3 && positions.length > 0; i++) {
+        for (let i = 0; i < IMAGES_TO_UPDATE && positions.length > 0; i++) {
             const randomIndex = Math.floor(Math.random() * positions.length);
             updatePositions.push(positions.splice(randomIndex, 1)[0]);
         }
@@ -369,7 +390,7 @@ async function updateRandomImages() {
                     // 重置翻转状态
                     gridItem.classList.remove('flip');
                     resolve();
-                }, 600); // 与 CSS transition 时间相匹配
+                }, 500); // 与 CSS transition 时间相匹配
             });
         }
     } catch (error) {
@@ -383,70 +404,15 @@ function updateImage(imageKey, albumName) {
     if (!imageKey) {
         console.log('无图片key，使用默认图片');
         $('#coverImage').attr('src', '/img/transparent.png');
-        $('#coverBackground').css('background-image', 'none');
-        $('#colorBackground').css('background-color', '#000000');
         return;
     }
-
-    // 检查DOM元素
-    const coverImage = $('#coverImage');
-    const coverBackground = $('#coverBackground');
-    const colorBackground = $('#colorBackground');
-
-    console.log('DOM元素状态:', {
-        coverImage: coverImage.length ? '存在' : '不存在',
-        coverBackground: coverBackground.length ? '存在' : '不存在',
-        colorBackground: colorBackground.length ? '存在' : '不存在'
-    });
 
     const imageUrl = '/roonapi/getImage?image_key=' + imageKey + 
         '&albumName=' + encodeURIComponent(albumName || '') +
         '&scale=full&format=image/jpeg&quality=100';
     console.log('图片URL:', imageUrl);
     
-    // 测试图片URL是否可访问
-    fetch(imageUrl)
-        .then(response => {
-            console.log('图片请求状态:', response.status, response.ok);
-            return response.blob();
-        })
-        .then(blob => {
-            console.log('成功获取图片数据，大小:', blob.size);
-        })
-        .catch(error => {
-            console.error('图片请求失败:', error);
-        });
-    
-    coverImage.attr('src', imageUrl);
-    coverBackground.css({
-        'background-image': `url(${imageUrl})`,
-        'opacity': '0.2',
-        'filter': 'blur(30px)',
-        'transition': 'all 1s ease'
-    }).show();
-    
-    const colorThief = new ColorThief();
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.onload = function() {
-        console.log('图片加载完成，开始提取颜色');
-        try {
-            const dominantColor = colorThief.getColor(img);
-            console.log('提取的主色调:', dominantColor);
-            const [r, g, b] = dominantColor;
-            const backgroundColor = `rgba(${r}, ${g}, ${b}, 0.95)`;
-            colorBackground.css({
-                'background': backgroundColor,
-                'transition': 'background 1s ease'
-            }).show();
-        } catch (error) {
-            console.error('提取颜色失败:', error);
-        }
-    };
-    img.onerror = function(error) {
-        console.error('图片加载失败:', error);
-    };
-    img.src = imageUrl;
+    $('#coverImage').attr('src', imageUrl);
 }
 
 // Cookie 相关函数
@@ -461,12 +427,45 @@ function setCookie(name, value) {
 // 主题设置
 function setTheme(theme) {
     settings.theme = theme;
-    if (theme === 'dark') {
-        $('body').css('background-color', '#232629');
-        $('#colorBackground').show().css('background-color', '#232629');
-        $('#coverBackground').hide();
-    }
     updateImage(currentImageKey);
+}
+
+// 传输控制处理函数
+function handleTransportCommand(data) {
+    console.log('发送传输控制命令:', data);
+    if (socket && socket.connected) {
+        socket.emit('transport', {
+            zoneID: settings.zoneID,
+            command: data.command
+        });
+    } else {
+        console.warn('Socket 未连接，无法发送传输控制命令');
+    }
+}
+
+// 更新MediaSession信息
+function updateMediaSessionInfo(nowPlaying) {
+    if (keyboardController && nowPlaying) {
+        const metadata = {
+            title: nowPlaying.three_line?.line1 || '未知标题',
+            artist: nowPlaying.three_line?.line2 || '未知艺术家',
+            album: nowPlaying.three_line?.line3 || nowPlaying.album || '未知专辑',
+            artwork: nowPlaying.image_key ? [
+                {
+                    src: `/roonapi/getImage4k?image_key=${nowPlaying.image_key}`,
+                    sizes: '2160x2160',
+                    type: 'image/jpeg'
+                },
+                {
+                    src: `/roonapi/getImage?image_key=${nowPlaying.image_key}&scale=full&format=image/jpeg`,
+                    sizes: '1080x1080',
+                    type: 'image/jpeg'
+                }
+            ] : []
+        };
+        
+        keyboardController.updateMediaSession(metadata);
+    }
 }
 
 // 事件监听器设置
@@ -475,6 +474,21 @@ document.addEventListener('DOMContentLoaded', function() {
     updateTime();
     setInterval(updateTime, 1000);
     initializeGridDisplay();
+    
+    // 初始化键盘控制器
+    if (typeof KeyboardController !== 'undefined') {
+        keyboardController = new KeyboardController();
+        keyboardController.on('transport', handleTransportCommand);
+        console.log('键盘控制器已初始化并连接到传输控制');
+    } else {
+        console.warn('KeyboardController 类未找到');
+    }
+    
+    // 启动内存监控，每2分钟检查一次
+    setInterval(monitorMemory, 120000);
+    
+    // 每10分钟执行一次强制清理
+    setInterval(forceCleanup, 600000);
 });
 
 // Socket.IO 事件处理
@@ -503,6 +517,7 @@ socket.on('zoneStatus', function(payload) {
         console.log('当前zone详细信息:', {
             zone_id: zone.zone_id,
             display_name: zone.display_name,
+            state: zone.state,
             now_playing: zone.now_playing ? {
                 image_key: zone.now_playing.image_key,
                 three_line: zone.now_playing.three_line,
@@ -534,8 +549,37 @@ socket.on('zoneStatus', function(payload) {
                 updateImage(currentImageKey);
             }
             
-            // 确保显示模式正确
-            toggleDisplayMode(true);
+            // 更新MediaSession信息
+            updateMediaSessionInfo(nowPlaying);
+            
+            // 只在播放状态时切换到专辑显示模式
+            if (zone.state === 'playing') {
+                console.log('检测到播放状态，切换到专辑显示');
+                toggleDisplayMode(true);
+            }
+        }
+        
+        // 更新MediaSession播放状态
+        if (keyboardController) {
+            const playbackState = zone.state === 'playing' ? 'playing' : 
+                                 zone.state === 'paused' ? 'paused' : 'none';
+            keyboardController.setPlaybackState(playbackState);
+        }
+        
+        // 处理非播放状态（paused, stopped等）
+        if (zone.state && zone.state !== 'playing') {
+            console.log('检测到非播放状态:', zone.state);
+            // 清除任何现有的切换定时器
+            if (playbackTimer) {
+                console.log('清除现有定时器');
+                clearTimeout(playbackTimer);
+            }
+            
+            console.log('设置5秒切换定时器');
+            playbackTimer = setTimeout(() => {
+                console.log('5秒已到，切换到网格显示');
+                toggleDisplayMode(false);
+            }, 5000);
         }
     } else {
         console.log('未收到区域信息或区域列表为空');
@@ -550,11 +594,11 @@ socket.on('notPlaying', function(data) {
             clearTimeout(playbackTimer);
         }
         
-        console.log('设置15秒切换定时器');
+        console.log('设置5秒切换定时器');
         playbackTimer = setTimeout(() => {
-            console.log('15秒已到，切换到网格显示');
+            console.log('5秒已到，切换到网格显示');
             toggleDisplayMode(false);
-        }, 15000); // 15秒后切换到网格显示
+        }, 5000); // 5秒后切换到网格显示
     } catch (error) {
         console.error('处理非播放状态事件时出错:', error);
     }
@@ -576,6 +620,14 @@ socket.on('nowplaying', function(data) {
             } else {
                 console.warn('警告：无法获取专辑名称，完整数据:', data);
                 updateImage(data.image_key);
+            }
+            
+            // 更新MediaSession信息
+            updateMediaSessionInfo(data);
+            
+            // 设置MediaSession为播放状态
+            if (keyboardController) {
+                keyboardController.setPlaybackState('playing');
             }
             
             // 立即切换到播放显示模式

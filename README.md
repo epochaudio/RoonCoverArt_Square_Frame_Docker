@@ -9,86 +9,81 @@
    - 自动提取封面主色调作为背景色
    - 支持全屏显示
    - 双击页面任意位置进入全屏模式（按 ESC 退出）
+   - 高性能图片切换，支持4K高清显示（2160x2160）
+   - 优化的交叉淡入淡出过渡效果
 
 2. **艺术墙模式**
    - 在停止播放15秒后自动切换到艺术墙模式
-   - 3x3网格布局展示
-   - 中央显示时钟
-   - 其他8个位置随机显示专辑封面
-   - 每60秒自动更新3张图片
-   - 平滑的3D翻转动画效果
+   - 4x4网格布局展示（16个位置）
+      - 每60秒自动更新多张图片
+      - 优化布局：20px网格间距和外边距，最大化图片显示区域
+   - 优化的书页翻转动画效果（从右向左）
+   - 支持多图片连续翻转的视觉体验
 
-3. **自动保存功能**
+3. **专用画屏优化**
+   - 针对22寸竖屏（1920x1920）专门优化
+   - 支持7x24小时稳定运行
+   - 智能图片缓存管理
+   - 性能监控和内存优化
+   - 防止屏幕保护程序激活
+
+4. **自动保存功能**
    - 自动保存播放过的专辑封面
    - 支持自定义保存目录
-   - 智能文件命名（艺术家_专辑名）
+   - 智能文件命名（使用image_key和专辑名）
+   - 避免重复保存相同图片
+   - 支持JPG/PNG格式配置
+
+5. **键盘快捷键控制**
+   - 空格键 - 播放/暂停切换
+   - ←/→箭头键 - 上一曲/下一曲  
+   - P键 - 播放
+   - ESC键 - 停止
+   - 媒体键 - 支持键盘上的媒体控制键
+   - MediaSession API集成，支持操作系统级媒体控制
+
+6. **连接管理**
+   - 自动重连机制
+   - 健康状态监控
+   - 连接状态实时反馈
+   - 优化的订阅管理
 
 ## 安装方法
 
 ### 方法1：使用 Docker（推荐）
 
-#### 选项A：直接使用 Docker
-
-从 Docker Hub 拉取镜像：
+#### Docker CLI 简化版：
 ```bash
-docker pull epochaudio/coverart:latest
-```
+mkdir -p /cache/Roonart
+cd /cache/Roonart
 
-运行容器：
-```bash
 docker run -d \
   --name roon-coverart \
   --network host \
   --restart unless-stopped \
-  -v $(pwd)/images:/app/images \
+  -v $(pwd):/app \
   epochaudio/coverart:latest
 ```
 
-#### 选项B：使用 Docker Compose
-1. 创建 `docker-compose.yml` 文件：
+#### Docker Compose 简化版：
 ```yaml
 version: '3'
 services:
   coverart:
     image: epochaudio/coverart:latest
+    container_name: roon-coverart
     network_mode: "host"
     restart: unless-stopped
     volumes:
-      - ./images:/app/images
+      - .:/app
 ```
 
-2. 运行容器：
-```bash
-docker-compose up -d
-```
+#### 🎯 优势
 
-### 重要：设置权限
-
-在运行 Docker 容器之前，必须正确设置 `images` 目录的权限。这是因为容器内的进程使用 UID 1000（node 用户）运行，需要对 `images` 目录有读写权限。
-
-1. 创建 images 目录（如果不存在）：
-```bash
-mkdir -p images
-```
-
-2. 设置目录权限（选择以下方案之一）：
-
-方案一（推荐 - 更安全）：
-```bash
-sudo chown -R 1000:1000 images
-sudo chmod -R 755 images
-```
-
-方案二（如果方案一不工作）：
-```bash
-sudo chmod -R 777 images
-```
-
-注意：
-- 这些权限命令需要在宿主机上执行，而不是在容器内
-- UID 1000 对应容器内的 node 用户
-- 建议使用方案一，方案二虽然更宽松但安全性较低
-- 如果遇到权限问题，容器日志中会显示相关错误信息
+1. **无需手动权限设置** - Dockerfile已处理所有权限问题
+2. **简化部署流程** - 减少用户操作步骤
+3. **安全性增强** - 以非root用户运行
+4. **一致性保证** - 消除环境差异导致的权限问题
 
 ### 方法2：手动安装
 
@@ -133,6 +128,19 @@ node app.js -p 3000
 - `artwork.saveDir`: 专辑封面保存目录
 - `artwork.autoSave`: 是否自动保存专辑封面
 - `artwork.format`: 保存图片的格式（jpg/png）
+
+
+## API 端点
+
+项目提供了以下API端点：
+
+- `GET /roonapi/getImage?image_key=xxx&albumName=xxx` - 获取专辑封面图片（标准分辨率1080x1080）
+- `GET /roonapi/getImage4k?image_key=xxx` - 获取4K高清专辑封面（2160x2160）
+- `GET /api/status` - 获取当前播放状态
+- `GET /api/pair` - 获取Roon Core配对状态
+- `GET /api/zones` - 获取所有可用的播放区域
+- `GET /api/images` - 获取已保存的专辑封面列表
+- `GET /roonapi/artworkStatus` - 获取图片保存状态和统计信息
 
 ## 使用说明
 
@@ -198,6 +206,28 @@ node app.js -p 3000
 ```
 
 ## 更新记录
+### 3.1.1 (2024-07)
+- 添加专用画屏显示优化功能
+- 新增高性能图片预加载和缓存机制
+- 实现交叉淡入淡出图片切换效果
+- 添加性能监控和内存管理
+- 优化4K图片显示支持（2160x2160）
+- 改进艺术墙网格布局为4x4（16个位置）
+- 增强连接管理和自动重连机制
+- 优化图片保存功能，避免重复保存
+- 提升长时间运行稳定性
+
+
+### 3.0.8 (2024-03)
+- 优化图片切换动画效果
+- 实现渐变式明暗过渡
+- 提升视觉体验流畅度
+
+### 3.0.7 (2024-03)
+- 优化定时器管理机制
+- 改进图片翻转动画性能
+- 提升内存使用效率
+- 修复长时间运行可能导致卡死的问题
 
 ### 3.0.6 (2024-03)
 - 优化网格显示的图片翻转效果

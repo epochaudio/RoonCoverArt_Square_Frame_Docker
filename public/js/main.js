@@ -139,9 +139,15 @@ class AppManager {
         this.settings.theme = theme;
         if (theme === 'dark') {
             document.body.style.backgroundColor = '#232629';
-            app.utils.dom.$('#colorBackground').style.display = 'block';
-            app.utils.dom.$('#colorBackground').style.backgroundColor = '#232629';
-            app.utils.dom.$('#coverBackground').style.display = 'none';
+            const colorBackground = app.utils.dom.$('#colorBackground');
+            const coverBackground = app.utils.dom.$('#coverBackground');
+            if (colorBackground) {
+                colorBackground.style.display = 'block';
+                colorBackground.style.backgroundColor = '#232629';
+            }
+            if (coverBackground) {
+                coverBackground.style.display = 'none';
+            }
         }
         app.utils.cookie.set("settings['theme']", theme);
     }
