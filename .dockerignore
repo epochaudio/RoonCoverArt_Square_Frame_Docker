@@ -1,38 +1,65 @@
-# 依赖目录
+# Determine which files and folders to ignore in Docker build
+
+# Dependencies
 node_modules
 npm-debug.log
+yarn-error.log
 
-# 版本控制
+# Version Control
 .git
 .gitignore
+.dockerignore
 
-# IDE 和编辑器文件
+# IDE & Editors
 .idea
 .vscode
 *.swp
 *.swo
+.cursorrules
 
-# 日志文件
+# Logs & Temp
 logs
 *.log
+tmp
 
-# 测试文件
+# Testing & Coverage
 test
 coverage
+__tests__
 
-# 环境变量文件
+# Environment & Config (Local)
 .env
 .env.*
+config.json
+config/local.json
 
-# 文档和其他不需要的文件
+# Documentation
 README.md
 CHANGELOG.md
 LICENSE
 *.md
+docs/
 
-# 开发和调试文件
+# System Files
 .DS_Store
-.cursorrules
-.gitignore
-# 图片目录
-images/ 
+Thumbs.db
+
+# Docker Artifacts
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+
+# Build Artifacts (if any)
+dist/
+build/
+
+# Application Data (Should be mounted)
+images/
+# Keep the directory structure but ignore content if possible, 
+# or just ignore the folder since we create it in Dockerfile
+# and mount it at runtime.
+
+# Agent Artifacts
+.gemini/
+AGENTS.md
+CODE_REVIEW.md

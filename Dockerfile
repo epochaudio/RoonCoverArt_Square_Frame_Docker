@@ -29,4 +29,4 @@ USER node
 
 EXPOSE 3666
 
-CMD ["node", "app.js", "--port", "3666"] 
+CMD ["npm", "start"] 

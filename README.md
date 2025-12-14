@@ -54,14 +54,19 @@
 
 #### Docker CLI 简化版：
 ```bash
-mkdir -p /cache/Roonart
+# 创建必要的配置目录
+mkdir -p /cache/Roonart/images
 cd /cache/Roonart
+# 创建配置文件（如果不存在）
+touch config.json
+echo '{}' > config.json
 
 docker run -d \
   --name roon-coverart \
   --network host \
   --restart unless-stopped \
-  -v $(pwd):/app \
+  -v $(pwd)/config.json:/app/config.json \
+  -v $(pwd)/images:/app/images \
   epochaudio/coverart:latest
 ```
 
@@ -75,7 +80,8 @@ services:
     network_mode: "host"
     restart: unless-stopped
     volumes:
-      - .:/app
+      - ./images:/app/images:rw
+      - ./config.json:/app/config.json:rw
 ```
 
 #### 🎯 优势
@@ -136,6 +142,7 @@ node app.js -p 3000
 
 - `GET /roonapi/getImage?image_key=xxx&albumName=xxx` - 获取专辑封面图片（标准分辨率1080x1080）
 - `GET /roonapi/getImage4k?image_key=xxx` - 获取4K高清专辑封面（2160x2160）
+- `GET /api/images/random?count=16` - [新增] 随机获取指定数量的封面图片（性能优化）
 - `GET /api/status` - 获取当前播放状态
 - `GET /api/pair` - 获取Roon Core配对状态
 - `GET /api/zones` - 获取所有可用的播放区域
@@ -206,6 +213,17 @@ node app.js -p 3000
 ```
 
 ## 更新记录
+
+### 3.1.3 (2025-12) 代码重构与优化
+- **后端重构**：将单体应用拆分为模块化服务（Server, Roon, Image, Socket），提升代码可维护性
+- **性能优化**：
+  - 新增 `/api/images/random` 接口，按需加载随机图片
+  - 艺术墙模式不再下载全量图片列表，大幅降低网络和内存开销
+- **Docker 优化**：
+  - 修复 Token 持久化配置，确保重启不丢失配对信息
+  - 优化 Dockerfile 入口点和目录权限
+- **现代化**：全面升级为 Async/Await 异步处理
+
 ### 3.1.1 (2024-07)
 - 添加专用画屏显示优化功能
 - 新增高性能图片预加载和缓存机制
