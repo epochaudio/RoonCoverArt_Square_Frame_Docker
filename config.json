@@ -1,8 +1,14 @@
 {
     "roonstate": {
         "tokens": {
-            "36bed0f0-2e67-47e8-a53d-7270dfac4c33": "9d772989-95e4-4b5f-9fb3-24468bc6be16"
+            "36bed0f0-2e67-47e8-a53d-7270dfac4c33": "ca0e6a6d-c36f-4a53-ade4-9e13b408da8a"
         },
         "paired_core_id": "36bed0f0-2e67-47e8-a53d-7270dfac4c33"
+    },
+    "settings": {
+        "output": {
+            "output_id": "1701d935088f5a8521851f0b72f30228de66",
+            "name": "HQ"
+        }
     }
 }
