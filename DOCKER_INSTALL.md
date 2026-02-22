@@ -164,7 +164,3 @@ ports:
 ```yaml
 network_mode: "host"
 ```
-
-## 10. 备注（镜像名变更）
-
-如果后续镜像仓库名切换为 `epochaudio/coverartforsquare`，只需要把 `docker-compose.yml` 或 `docker run` 中的镜像名替换即可，挂载目录和持久化方式不变。
