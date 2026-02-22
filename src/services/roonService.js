@@ -22,7 +22,7 @@ class RoonService extends EventEmitter {
         this.roon = new RoonApi({
             extension_id: "com.epochaudio.coverart",
             display_name: "Cover Art",
-            display_version: "3.1.3",
+            display_version: "3.1.4",
             publisher: "门耳朵制作",
             email: "masked",
             website: "https://shop236654229.taobao.com/",
@@ -134,8 +134,7 @@ class RoonService extends EventEmitter {
     checkZoneUpdate(zone) {
         if (!this.settings.output) return;
 
-        const isSelectedZone = zone.outputs.some(o => o.output_id === this.settings.output.output_id);
-        if (!isSelectedZone) return;
+        if (!this.isSelectedZone(zone)) return;
 
         if (zone.state === "playing" && zone.now_playing) {
             this.emit("nowplaying", {
@@ -148,22 +147,29 @@ class RoonService extends EventEmitter {
     }
 
     emitZones() {
-        if (this.settings.output) {
-            const selectedZone = this.zoneStatus.find(z =>
-                z.outputs.some(o => o.output_id === this.settings.output.output_id)
-            );
-            if (selectedZone) {
-                this.emit("zoneStatus", [selectedZone]);
-                return;
-            }
-        }
-        this.emit("zoneStatus", this.zoneStatus);
+        this.emit("zoneStatus", this.getVisibleZones());
     }
 
     updateSelectedZone() {
         if (this.pairStatus) {
             this.emitZones();
         }
+    }
+
+    isSelectedZone(zone) {
+        if (!this.settings.output || !zone || !zone.outputs) return false;
+        return zone.outputs.some(o => o.output_id === this.settings.output.output_id);
+    }
+
+    getSelectedZone() {
+        if (!this.core || !this.transport || !this.settings.output) return null;
+        return this.zoneStatus.find(z => this.isSelectedZone(z)) || null;
+    }
+
+    getVisibleZones() {
+        if (!this.core || !this.transport) return [];
+        const selectedZone = this.getSelectedZone();
+        return selectedZone ? [selectedZone] : this.zoneStatus;
     }
 
     // Public API Methods

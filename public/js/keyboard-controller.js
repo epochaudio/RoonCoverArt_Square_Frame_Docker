@@ -8,6 +8,8 @@ class KeyboardController extends EventEmitter {
     constructor() {
         super();
         this.isEnabled = true;
+        this.keydownHandler = null;
+        this.keyupHandler = null;
         this.keyMap = {
             // 基本控制键
             'Space': 'playPause',
@@ -35,7 +37,7 @@ class KeyboardController extends EventEmitter {
     }
 
     setupKeyboardEvents() {
-        document.addEventListener('keydown', (event) => {
+        this.keydownHandler = (event) => {
             if (!this.isEnabled) return;
             
             // 阻止某些键的默认行为
@@ -44,16 +46,19 @@ class KeyboardController extends EventEmitter {
             }
             
             this.handleKeyPress(event);
-        }, true);
+        };
 
-        document.addEventListener('keyup', (event) => {
+        this.keyupHandler = (event) => {
             if (!this.isEnabled) return;
             
             // 对于某些键，在keyup时也阻止默认行为
             if (this.shouldPreventDefault(event.code)) {
                 event.preventDefault();
             }
-        }, true);
+        };
+
+        document.addEventListener('keydown', this.keydownHandler, true);
+        document.addEventListener('keyup', this.keyupHandler, true);
     }
 
     shouldPreventDefault(keyCode) {
@@ -171,8 +176,14 @@ class KeyboardController extends EventEmitter {
     destroy() {
         this.isEnabled = false;
         // 清理事件监听器
-        document.removeEventListener('keydown', this.handleKeyPress);
-        document.removeEventListener('keyup', this.handleKeyPress);
+        if (this.keydownHandler) {
+            document.removeEventListener('keydown', this.keydownHandler, true);
+            this.keydownHandler = null;
+        }
+        if (this.keyupHandler) {
+            document.removeEventListener('keyup', this.keyupHandler, true);
+            this.keyupHandler = null;
+        }
         
         // 清理 MediaSession
         if ('mediaSession' in navigator) {

@@ -49,7 +49,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/', apiRoutes);
-app.get("/", (req, res) => res.sendFile(path.resolve(__dirname, "../public/fullscreen.html")));
+app.get("/", (req, res) => res.sendFile(path.resolve(__dirname, "../public/index.html")));
 
 // Init Services
 socketService.init(io);

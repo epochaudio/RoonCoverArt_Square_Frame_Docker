@@ -142,7 +142,7 @@ function makelayout(settings) {
 var roon = new RoonApi({
     extension_id:        "com.epochaudio.coverart",
     display_name:        "Cover Art",
-    display_version:     "3.1.3",
+    display_version:     "3.1.4",
     publisher:           "门耳朵制作",
     email:              "masked",
     website:            "https://shop236654229.taobao.com/",
@@ -495,7 +495,7 @@ io.on("connection", function(socket) {
 
 // Web Routes
 app.get("/", function(req, res) {
-  res.sendFile(__dirname + "/public/fullscreen.html");
+  res.sendFile(__dirname + "/public/index.html");
 });
 
 app.get("/roonapi/getImage", function(req, res) {

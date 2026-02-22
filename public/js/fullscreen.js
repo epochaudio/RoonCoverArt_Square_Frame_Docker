@@ -3,8 +3,6 @@
 // 全局变量和常量定义
 const socket = io();
 let currentImageKey = null;
-let mouseTimer;
-const IMAGE_TIMEOUT = 10000;  // 图片加载超时时间（10秒）
 let updateInterval = null;
 let playbackTimer = null;
 const GRID_UPDATE_INTERVAL = 120000; // 120秒更新周期
@@ -14,13 +12,6 @@ const IMAGES_TO_UPDATE = 3; // 每次更新3张图片
 const settings = {
     theme: readCookie("settings['theme']") || 'dark',
     zoneID: readCookie("settings['zoneID']") || null
-};
-
-// 样式相关
-const css = {
-    backgroundColor: '#232629',
-    foregroundColor: '#eff0f1',
-    colorBackground: '#000000'
 };
 
 // 图片加载和缓存管理
@@ -152,13 +143,6 @@ function attemptRecovery() {
     }, 5000);
 }
 
-// 设备检测
-function isTouchDevice() {
-    return (('ontouchstart' in window) ||
-        (navigator.maxTouchPoints > 0) ||
-        (navigator.msMaxTouchPoints > 0));
-}
-
 // 时钟功能
 function updateTime() {
     const clockContent = document.querySelector('.clock-content');
@@ -225,6 +209,35 @@ function toggleDisplayMode(isPlaying) {
         console.log('初始化网格显示');
         initializeGridDisplay();
     }
+}
+
+function clearPlaybackFallbackTimer() {
+    if (!playbackTimer) return;
+    console.log('清除现有定时器');
+    clearTimeout(playbackTimer);
+    playbackTimer = null;
+}
+
+function scheduleGridDisplayFallback(delayMs) {
+    clearPlaybackFallbackTimer();
+    console.log(`设置${delayMs / 1000}秒切换定时器`);
+    playbackTimer = setTimeout(() => {
+        console.log(`${delayMs / 1000}秒已到，切换到网格显示`);
+        toggleDisplayMode(false);
+        playbackTimer = null;
+    }, delayMs);
+}
+
+function resolveCurrentZone(payload) {
+    if (!payload || payload.length === 0) return null;
+
+    if (!settings.zoneID) {
+        settings.zoneID = payload[0].zone_id;
+        console.log('设置新的zoneID:', settings.zoneID);
+        setCookie("settings['zoneID']", settings.zoneID);
+    }
+
+    return payload.find(z => z.zone_id === settings.zoneID) || payload[0];
 }
 
 // 图片更新相关函数
@@ -392,12 +405,6 @@ function setCookie(name, value) {
     Cookies.set(name, value, { expires: 365 });
 }
 
-// 主题设置
-function setTheme(theme) {
-    settings.theme = theme;
-    updateImage(currentImageKey);
-}
-
 // 传输控制处理函数
 function handleTransportCommand(data) {
     console.log('发送传输控制命令:', data);
@@ -438,7 +445,6 @@ function updateMediaSessionInfo(nowPlaying) {
 
 // 事件监听器设置
 document.addEventListener('DOMContentLoaded', function () {
-    const isTouch = isTouchDevice();
     updateTime();
     setInterval(updateTime, 1000);
     initializeGridDisplay();
@@ -475,13 +481,7 @@ socket.on('pairStatus', function (payload) {
 socket.on('zoneStatus', function (payload) {
     console.log('收到区域状态:', payload);
     if (payload && payload.length > 0) {
-        if (!settings.zoneID) {
-            settings.zoneID = payload[0].zone_id;
-            console.log('设置新的zoneID:', settings.zoneID);
-            setCookie("settings['zoneID']", settings.zoneID);
-        }
-
-        const zone = payload.find(z => z.zone_id === settings.zoneID) || payload[0];
+        const zone = resolveCurrentZone(payload);
         console.log('当前zone详细信息:', {
             zone_id: zone.zone_id,
             display_name: zone.display_name,
@@ -528,8 +528,7 @@ socket.on('zoneStatus', function (payload) {
         if (zone.state === 'playing') {
             if (playbackTimer) {
                 console.log('恢复播放，取消网格切换定时器');
-                clearTimeout(playbackTimer);
-                playbackTimer = null;
+                clearPlaybackFallbackTimer();
             }
             toggleDisplayMode(true);
         }
@@ -544,17 +543,7 @@ socket.on('zoneStatus', function (payload) {
         // 处理非播放状态（paused, stopped等）
         if (zone.state && zone.state !== 'playing') {
             console.log('检测到非播放状态:', zone.state);
-            // 清除任何现有的切换定时器
-            if (playbackTimer) {
-                console.log('清除现有定时器');
-                clearTimeout(playbackTimer);
-            }
-
-            console.log('设置5秒切换定时器');
-            playbackTimer = setTimeout(() => {
-                console.log('5秒已到，切换到网格显示');
-                toggleDisplayMode(false);
-            }, 5000);
+            scheduleGridDisplayFallback(5000);
         }
     } else {
         console.log('未收到区域信息或区域列表为空');
@@ -564,16 +553,7 @@ socket.on('zoneStatus', function (payload) {
 socket.on('notPlaying', function (data) {
     console.log('收到非播放状态事件:', data);
     try {
-        if (playbackTimer) {
-            console.log('清除现有定时器');
-            clearTimeout(playbackTimer);
-        }
-
-        console.log('设置5秒切换定时器');
-        playbackTimer = setTimeout(() => {
-            console.log('5秒已到，切换到网格显示');
-            toggleDisplayMode(false);
-        }, 5000); // 5秒后切换到网格显示
+        scheduleGridDisplayFallback(5000); // 5秒后切换到网格显示
     } catch (error) {
         console.error('处理非播放状态事件时出错:', error);
     }
@@ -612,8 +592,7 @@ socket.on('nowplaying', function (data) {
         // 清除任何现有的切换定时器
         if (playbackTimer) {
             console.log('取消切换定时器');
-            clearTimeout(playbackTimer);
-            playbackTimer = null;
+            clearPlaybackFallbackTimer();
         }
     } catch (error) {
         console.error('处理播放事件时出错:', error);

@@ -61,7 +61,8 @@ router.get('/api/images', async (req, res) => {
 
 // NEW: Random Images API
 router.get('/api/images/random', async (req, res) => {
-    const count = parseInt(req.query.count) || 16;
+    const requestedCount = parseInt(req.query.count, 10);
+    const count = Math.min(64, Math.max(1, Number.isNaN(requestedCount) ? 16 : requestedCount));
     try {
         const images = await imageService.getRandomImages(count);
         res.json(images);
@@ -73,20 +74,17 @@ router.get('/api/images/random', async (req, res) => {
 
 router.get('/api/status', (req, res) => {
     if (!roonService.core || !roonService.transport) {
-        return res.status(500).json({ error: "Not connected to Roon Core" });
+        return res.json({ connected: false, is_playing: false });
     }
 
     // Check if playing in selected zone
     if (roonService.settings.output) {
-        const zones = roonService.getZoneStatus();
-        const zone = zones.find(z =>
-            z.outputs.some(o => o.output_id === roonService.settings.output.output_id)
-        );
+        const zone = roonService.getSelectedZone();
         if (zone && zone.state === "playing" && zone.now_playing) {
-            return res.json({ is_playing: true, ...zone.now_playing });
+            return res.json({ connected: true, is_playing: true, ...zone.now_playing });
         }
     }
-    res.json({ is_playing: false });
+    res.json({ connected: true, is_playing: false });
 });
 
 router.get('/api/pair', (req, res) => {
