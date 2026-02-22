@@ -1,32 +1,34 @@
-FROM node:20-alpine
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-COPY package*.json ./
-
+# Git is only required while installing GitHub-based npm dependencies.
 RUN apk add --no-cache git
 
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
-COPY . .
 
-# 确保node用户存在且UID为1000
-RUN addgroup -g 1000 node || true && \
-    adduser -u 1000 -G node -s /bin/sh -D node || true
+FROM node:20-alpine AS runtime
 
-# 在构建时创建必要的目录和配置文件
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./package.json
+COPY --chown=node:node src ./src
+COPY --chown=node:node public ./public
+COPY --chown=node:node config/default.json ./config/default.json
+
+# Runtime data paths (usually bind-mounted by docker-compose)
 RUN mkdir -p /app/images && \
     touch /app/config.json && \
-    echo '{}' > /app/config.json
-
-# 设置正确的所有者和权限
-RUN chown -R node:node /app && \
+    chown node:node /app/images /app/config.json && \
     chmod 755 /app/images && \
     chmod 644 /app/config.json
 
-# 以非root用户运行应用
 USER node
 
 EXPOSE 3666
 
-CMD ["npm", "start"] 
+CMD ["node", "src/server.js"]

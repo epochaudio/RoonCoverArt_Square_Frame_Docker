@@ -3,8 +3,11 @@ services:
     container_name: coverart-app
     image: epochaudio/coverart:latest
     build: .
+    environment:
+      - ROON_PERSIST_PATH=/app/config.json
     network_mode: "host"
     restart: unless-stopped
     volumes:
       - ./images:/app/images:rw
+      - ./config:/app/config:rw
       - ./config.json:/app/config.json:rw

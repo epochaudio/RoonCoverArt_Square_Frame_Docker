@@ -13,6 +13,7 @@ yarn-error.log
 # IDE & Editors
 .idea
 .vscode
+.claude
 *.swp
 *.swo
 .cursorrules
@@ -32,6 +33,7 @@ __tests__
 .env.*
 config.json
 config/local.json
+config/local.json.EXAMPLE
 
 # Documentation
 README.md
@@ -55,6 +57,7 @@ build/
 
 # Application Data (Should be mounted)
 images/
+images_backup/
 # Keep the directory structure but ignore content if possible, 
 # or just ignore the folder since we create it in Dockerfile
 # and mount it at runtime.

@@ -5,6 +5,8 @@ const RoonApiTransport = require("node-roon-api-transport");
 const RoonApiBrowse = require("node-roon-api-browse");
 const RoonApiSettings = require("node-roon-api-settings");
 const EventEmitter = require('events');
+const fs = require('fs');
+const path = require('path');
 
 class RoonService extends EventEmitter {
     constructor() {
@@ -31,6 +33,8 @@ class RoonService extends EventEmitter {
             core_unpaired: (core) => this.handleCoreUnpaired(core)
         });
 
+        this.configurePersistence();
+
         this.svc_status = new RoonApiStatus(this.roon);
         this.svc_settings = new RoonApiSettings(this.roon, {
             get_settings: (cb) => cb(this.makeLayout(this.settings)),
@@ -52,6 +56,65 @@ class RoonService extends EventEmitter {
 
         this.svc_status.set_status("Extension enabled", false);
         this.settings = this.roon.load_config("settings") || { output: undefined };
+    }
+
+    configurePersistence() {
+        const configuredPath = process.env.ROON_PERSIST_PATH || "config.json";
+        const appRoot = path.resolve(__dirname, "../..");
+        const resolvedPath = path.isAbsolute(configuredPath)
+            ? configuredPath
+            : path.resolve(appRoot, configuredPath);
+        let persistFile = resolvedPath;
+
+        try {
+            if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
+                persistFile = path.join(resolvedPath, "roon-config.json");
+                console.warn(`ROON_PERSIST_PATH points to a directory, using ${persistFile}`);
+            }
+
+            const persistDir = path.dirname(persistFile);
+            if (!fs.existsSync(persistDir)) {
+                fs.mkdirSync(persistDir, { recursive: true });
+            }
+
+            if (!fs.existsSync(persistFile)) {
+                fs.writeFileSync(persistFile, "{}");
+            }
+        } catch (err) {
+            console.error("Failed to prepare Roon persistence file:", err);
+        }
+
+        this.persistFile = persistFile;
+
+        this.roon.save_config = (key, value) => {
+            try {
+                let configData = {};
+                try {
+                    configData = JSON.parse(fs.readFileSync(this.persistFile, { encoding: 'utf8' })) || {};
+                } catch (e) {
+                    configData = {};
+                }
+
+                if (value === undefined || value === null) {
+                    delete configData[key];
+                } else {
+                    configData[key] = value;
+                }
+
+                fs.writeFileSync(this.persistFile, JSON.stringify(configData, null, '    '));
+            } catch (e) {
+                console.error("Failed to save Roon config:", e);
+            }
+        };
+
+        this.roon.load_config = (key) => {
+            try {
+                const content = fs.readFileSync(this.persistFile, { encoding: 'utf8' });
+                return JSON.parse(content)[key];
+            } catch (e) {
+                return undefined;
+            }
+        };
     }
 
     start() {
