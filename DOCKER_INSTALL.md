@@ -1,6 +1,6 @@
 # Docker 安装说明（当前版本）
 
-本文基于当前仓库的 `Dockerfile` 和 `docker-compose.yml` 配置编写，适用于本项目当前镜像运行方式。
+本文基于当前已发布镜像和当前 `docker-compose.yml` 配置编写，推荐直接拉取镜像使用（不需要本地构建）。
 
 ## 1. 说明（当前持久化方式）
 
@@ -40,14 +40,20 @@ test -f config/local.json || cp config/local.json.EXAMPLE config/local.json
 
 如果你只想用默认端口 `3666`，也可以不创建 `config/local.json`。
 
-## 4. 使用 Docker Compose（推荐）
+## 4. 推荐方式：先拉取镜像，再用 Docker Compose 启动
+
+先拉取官方镜像（最简单、最快）：
+
+```bash
+docker pull epochaudio/coverart:latest
+```
 
 当前仓库的 `docker-compose.yml` 已包含正确挂载与持久化设置。
 
 启动：
 
 ```bash
-docker compose up -d
+docker compose up -d --no-build
 ```
 
 查看日志：
@@ -68,7 +74,7 @@ docker compose down
 
 1. 打开 Roon
 2. 进入 `Settings` -> `Extensions`
-3. 找到 `Cover Art`
+3. 找到 `CoverArt_Square_Docker`
 4. 点击启用/授权
 
 授权完成后，状态会写入宿主机的 `./config.json`。
@@ -90,28 +96,32 @@ docker compose down
 然后重启容器：
 
 ```bash
-docker compose up -d
+docker compose up -d --no-build
 ```
 
 ## 7. 升级镜像（保留授权和图片）
 
-如果使用 `latest`：
+如果使用 `latest`（推荐）：
 
 ```bash
-docker compose pull
-docker compose up -d
+docker pull epochaudio/coverart:latest
+docker compose up -d --no-build
 ```
 
 如果你固定版本（例如 `3.1.4`），先把 `docker-compose.yml` 中镜像标签改成对应版本，再执行：
 
 ```bash
-docker compose pull
-docker compose up -d
+docker pull epochaudio/coverart:3.1.4
+docker compose up -d --no-build
 ```
 
 ## 8. 不使用 Compose（可选）
 
-也可以直接使用 `docker run`：
+也可以直接先拉取镜像，再使用 `docker run`：
+
+```bash
+docker pull epochaudio/coverart:latest
+```
 
 ```bash
 docker run -d \

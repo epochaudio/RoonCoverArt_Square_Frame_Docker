@@ -56,6 +56,12 @@
 
 - `DOCKER_INSTALL.md`
 
+推荐方式：先拉取官方镜像，再按文档使用 `docker compose` 或 `docker run` 启动：
+
+```bash
+docker pull epochaudio/coverart:latest
+```
+
 #### Docker CLI 简化版：
 ```bash
 # 创建必要的配置目录
