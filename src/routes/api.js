@@ -8,7 +8,11 @@ const config = require('config');
 router.get('/roonapi/getImage', async (req, res) => {
     const { image_key, albumName } = req.query;
 
-    roonService.getImage(image_key, { scale: "fit", width: 1080, height: 1080, format: "image/jpeg" }, async (error, contentType, body) => {
+    if (!image_key) {
+        return res.status(400).json({ error: 'Missing image_key' });
+    }
+
+    roonService.getImage(image_key, imageService.getImageOptions(1080, 1080), async (error, contentType, body) => {
         if (error || !body) {
             console.error('Error fetching image:', error);
             return res.status(500).json({ error: 'Failed to fetch image' });
@@ -20,18 +24,23 @@ router.get('/roonapi/getImage', async (req, res) => {
             imageService.saveArtwork(body, albumName).catch(err => console.error('Auto-save failed:', err));
         }
 
-        res.contentType(contentType);
+        res.contentType(contentType || imageService.contentType);
         res.send(body);
     });
 });
 
 router.get('/roonapi/getImage4k', (req, res) => {
     const { image_key } = req.query;
-    roonService.getImage(image_key, { scale: "fit", width: 2160, height: 2160, format: "image/jpeg" }, (error, contentType, body) => {
+
+    if (!image_key) {
+        return res.status(400).json({ error: 'Missing image_key' });
+    }
+
+    roonService.getImage(image_key, imageService.getImageOptions(2160, 2160), (error, contentType, body) => {
         if (error || !body) {
             return res.status(500).json({ error: 'Failed to fetch image' });
         }
-        res.contentType(contentType);
+        res.contentType(contentType || imageService.contentType);
         res.send(body);
     });
 });

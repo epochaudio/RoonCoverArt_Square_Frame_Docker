@@ -1,14 +1,14 @@
 # Docker 安装说明（当前版本）
 
-本文基于当前已发布镜像和当前 `docker-compose.yml` 配置编写，推荐直接拉取镜像使用（不需要本地构建）。
+本文基于当前已发布镜像和当前 `docker-compose.yml` 配置编写。默认推荐直接拉取镜像使用；需要本地构建时，叠加 `docker-compose.build.yml`。
 
 ## 1. 说明（当前持久化方式）
 
 当前容器使用两套配置/状态文件：
 
-- `./config/` -> `/app/config/`
+- `./config/local.json` -> `/app/config/local.json`
   - 用于应用配置（`node-config`）
-  - 例如：`config/default.json`、`config/local.json`
+  - 镜像内保留 `config/default.json`，宿主机只覆盖 `config/local.json`
 - `./config.json` -> `/app/config.json`
   - 用于 Roon 授权与扩展状态持久化（避免重启后重复授权）
 
@@ -21,7 +21,7 @@
 当前可用镜像（已发布）：
 
 - `epochaudio/coverart:latest`
-- `epochaudio/coverart:3.1.4`
+- `epochaudio/coverart:3.1.5`
 
 ## 3. 准备目录与文件
 
@@ -29,16 +29,16 @@
 
 ```bash
 mkdir -p images config
-test -f config.json || echo '{}' > config.json
-test -f config/local.json || cp config/local.json.EXAMPLE config/local.json
+test -f config.json || printf '{}\n' > config.json
+test -f config/local.json || printf '{\n  "server": {\n    "port": "3666"\n  }\n}\n' > config/local.json
 ```
 
 说明：
 - `images/` 用于保存封面图
 - `config.json` 用于保存 Roon 授权/配对状态（必须保留）
-- `config/local.json` 用于覆盖默认配置（可选，但推荐）
+- `config/local.json` 用于覆盖默认配置
 
-如果你只想用默认端口 `3666`，也可以不创建 `config/local.json`。
+如果你只想用默认端口 `3666`，保留上面的默认 `config/local.json` 即可。
 
 ## 4. 推荐方式：先拉取镜像，再用 Docker Compose 启动
 
@@ -48,18 +48,24 @@ test -f config/local.json || cp config/local.json.EXAMPLE config/local.json
 docker pull epochaudio/coverart:latest
 ```
 
-当前仓库的 `docker-compose.yml` 已包含正确挂载与持久化设置。
+当前仓库的 `docker-compose.yml` 已包含运行已发布镜像所需的挂载、持久化、健康检查和基础安全设置。
 
 启动：
 
 ```bash
-docker compose up -d --no-build
+docker compose up -d
 ```
 
 查看日志：
 
 ```bash
 docker compose logs -f
+```
+
+查看健康状态：
+
+```bash
+docker compose ps
 ```
 
 停止：
@@ -96,7 +102,7 @@ docker compose down
 然后重启容器：
 
 ```bash
-docker compose up -d --no-build
+docker compose up -d
 ```
 
 ## 7. 升级镜像（保留授权和图片）
@@ -105,17 +111,27 @@ docker compose up -d --no-build
 
 ```bash
 docker pull epochaudio/coverart:latest
-docker compose up -d --no-build
+docker compose up -d
 ```
 
-如果你固定版本（例如 `3.1.4`），先把 `docker-compose.yml` 中镜像标签改成对应版本，再执行：
+如果你固定版本（例如 `3.1.5`），用 `COVERART_IMAGE` 指定镜像标签：
 
 ```bash
-docker pull epochaudio/coverart:3.1.4
-docker compose up -d --no-build
+docker pull epochaudio/coverart:3.1.5
+COVERART_IMAGE=epochaudio/coverart:3.1.5 docker compose up -d
 ```
 
-## 8. 不使用 Compose（可选）
+## 8. 本地构建镜像（可选）
+
+如果需要基于当前源码构建镜像：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+本地构建会执行 `npm ci --omit=dev`，需要能访问 npm registry 和 GitHub 上的 Roon API 依赖。
+
+## 9. 不使用 Compose（可选）
 
 也可以直接先拉取镜像，再使用 `docker run`：
 
@@ -130,14 +146,22 @@ docker run -d \
   --network host \
   -e ROON_PERSIST_PATH=/app/config.json \
   -v "$(pwd)/images:/app/images" \
-  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
   -v "$(pwd)/config.json:/app/config.json" \
   epochaudio/coverart:latest
 ```
 
-## 9. 常见问题
+## 10. Compose 环境变量
 
-### 9.1 每次重启都要重新授权
+可按需设置：
+
+- `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:latest`
+- `COVERART_CONTAINER_NAME`: 容器名，默认 `coverart-app`
+- `ALLOWED_ORIGINS`: 允许跨源浏览器访问的 Origin 列表，多个值用逗号分隔
+
+## 11. 常见问题
+
+### 11.1 每次重启都要重新授权
 
 检查以下几点：
 
@@ -151,14 +175,14 @@ docker run -d \
 ls -l config.json
 ```
 
-### 9.2 改了 `config.json` 里的端口但不生效
+### 11.2 改了 `config.json` 里的端口但不生效
 
 这是正常现象。
 
 - `config.json` 是 Roon 授权状态文件
 - 应用端口应写在 `config/local.json`
 
-### 9.3 macOS / Windows 上 `host` 网络模式不可用
+### 11.3 macOS / Windows 上 `host` 网络模式不可用
 
 当前配置使用 `network_mode: "host"`（Linux 环境最方便）。
 

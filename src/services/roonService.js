@@ -8,11 +8,15 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 
+const TRANSPORT_SERVICE = "com.roonlabs.transport:2";
+const TRANSPORT_COMMANDS = new Set(['playpause', 'play', 'pause', 'stop', 'previous', 'next']);
+
 class RoonService extends EventEmitter {
     constructor() {
         super();
         this.core = null;
         this.transport = null;
+        this.zoneSubscription = null;
         this.pairStatus = false;
         this.zoneStatus = [];
         this.settings = { output: undefined };
@@ -24,7 +28,7 @@ class RoonService extends EventEmitter {
         this.roon = new RoonApi({
             extension_id: "com.epochaudio.coverart",
             display_name: "CoverArt_Square_Docker",
-            display_version: "3.1.4",
+            display_version: "3.1.5",
             publisher: "门耳朵制作",
             email: "masked",
             website: "https://shop236654229.taobao.com/",
@@ -137,6 +141,8 @@ class RoonService extends EventEmitter {
 
     handleCorePaired(core) {
         console.log('Roon Core Paired');
+        this.unsubscribeZones();
+
         this.core = core;
         this.transport = core.services.RoonApiTransport;
         this.pairStatus = true;
@@ -147,7 +153,7 @@ class RoonService extends EventEmitter {
             return;
         }
 
-        this.transport.subscribe_zones((cmd, data) => this.handleZoneEvent(cmd, data));
+        this.subscribeZones();
 
         this.emit('pairStatus', { pairEnabled: true });
         this.svc_status.set_status("Connected to Roon Core", false);
@@ -155,6 +161,8 @@ class RoonService extends EventEmitter {
 
     handleCoreUnpaired(core) {
         console.log('Roon Core Unpaired');
+        this.unsubscribeZones();
+
         this.core = null;
         this.transport = null;
         this.pairStatus = false;
@@ -162,6 +170,68 @@ class RoonService extends EventEmitter {
 
         this.emit('pairStatus', { pairEnabled: false });
         this.svc_status.set_status("Waiting for pairing", true);
+    }
+
+    subscribeZones() {
+        if (!this.core || !this.core.moo || !this.transport) return;
+
+        this.zoneSubscription = this.core.moo._subscribe_helper(TRANSPORT_SERVICE, "zones", (cmd, data) => {
+            this.updateTransportZoneCache(cmd, data);
+            this.handleZoneEvent(cmd, data);
+        });
+    }
+
+    unsubscribeZones() {
+        if (!this.zoneSubscription || typeof this.zoneSubscription.unsubscribe !== 'function') {
+            this.zoneSubscription = null;
+            return;
+        }
+
+        try {
+            this.zoneSubscription.unsubscribe();
+        } catch (err) {
+            console.warn('Failed to unsubscribe zones:', err);
+        } finally {
+            this.zoneSubscription = null;
+        }
+    }
+
+    updateTransportZoneCache(cmd, data = {}) {
+        if (!this.transport) return;
+
+        if (cmd === "Subscribed") {
+            this.transport._zones = (data.zones || []).reduce((zones, zone) => {
+                zones[zone.zone_id] = zone;
+                return zones;
+            }, {});
+        } else if (cmd === "Changed" && this.transport._zones) {
+            if (data.zones_removed) {
+                data.zones_removed.forEach(zone => {
+                    const zoneId = typeof zone === 'string' ? zone : zone.zone_id;
+                    delete this.transport._zones[zoneId];
+                });
+            }
+            if (data.zones_added) {
+                data.zones_added.forEach(zone => {
+                    this.transport._zones[zone.zone_id] = zone;
+                });
+            }
+            if (data.zones_changed) {
+                data.zones_changed.forEach(zone => {
+                    this.transport._zones[zone.zone_id] = zone;
+                });
+            }
+            if (data.zones_seek_changed) {
+                data.zones_seek_changed.forEach(change => {
+                    const zone = this.transport._zones[change.zone_id];
+                    if (!zone) return;
+                    if (zone.now_playing) zone.now_playing.seek_position = change.seek_position;
+                    zone.queue_time_remaining = change.queue_time_remaining;
+                });
+            }
+        } else if (cmd === "Unsubscribed") {
+            delete this.transport._zones;
+        }
     }
 
     handleZoneEvent(cmd, data) {
@@ -172,7 +242,8 @@ class RoonService extends EventEmitter {
             } else if (cmd === "Changed") {
                 if (data.zones_removed) {
                     data.zones_removed.forEach(zone => {
-                        this.zoneStatus = this.zoneStatus.filter(z => z.zone_id !== zone.zone_id);
+                        const zoneId = typeof zone === 'string' ? zone : zone.zone_id;
+                        this.zoneStatus = this.zoneStatus.filter(z => z.zone_id !== zoneId);
                     });
                 }
                 if (data.zones_added) {
@@ -245,19 +316,22 @@ class RoonService extends EventEmitter {
     }
 
     control(zoneId, command) {
-        if (!this.transport) return;
+        if (!this.transport || !zoneId || !TRANSPORT_COMMANDS.has(command)) return false;
         const msg = { zone_id: zoneId };
         this.transport.control(msg, command);
+        return true;
     }
 
     changeVolume(outputId, mode, value) {
-        if (!this.transport) return;
+        if (!this.transport || !outputId || !Number.isFinite(value)) return false;
         this.transport.change_volume(outputId, mode, value);
+        return true;
     }
 
     changeSettings(zoneId, settings) {
-        if (!this.transport) return;
+        if (!this.transport || !zoneId || !settings || Object.keys(settings).length === 0) return false;
         this.transport.change_settings(zoneId, settings, (err) => { });
+        return true;
     }
 
     browse(options, callback) {

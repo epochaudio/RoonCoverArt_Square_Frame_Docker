@@ -19,11 +19,28 @@ console.log(`Working directory: ${process.cwd()}`);
 const defaultListenPort = 3666;
 const configPort = config.has("server.port") ? config.get("server.port") : defaultListenPort;
 const listenPort = process.env.PORT || configPort;
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+    || (config.has("server.allowedOrigins") ? config.get("server.allowedOrigins") : []);
+const allowedOrigins = new Set(
+    (Array.isArray(configuredOrigins) ? configuredOrigins : String(configuredOrigins).split(','))
+        .map(origin => origin.trim())
+        .filter(Boolean)
+);
+
+function isOriginAllowed(origin) {
+    return !origin || allowedOrigins.has(origin);
+}
 
 // Express setup
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+    cors: {
+        origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
+        methods: ["GET", "POST"]
+    },
+    allowRequest: (req, callback) => callback(null, isOriginAllowed(req.headers.origin))
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -42,8 +59,15 @@ app.use("/js-cookie", express.static(path.join(__dirname, "../node_modules/js-co
 
 // CORS
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+    const origin = req.headers.origin;
+    if (origin && isOriginAllowed(origin)) {
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Vary", "Origin");
+    }
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(isOriginAllowed(origin) ? 204 : 403);
+    }
     next();
 });
 

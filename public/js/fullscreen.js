@@ -74,6 +74,10 @@ const imageLoader = new ImageLoader();
 // 创建键盘控制器实例
 let keyboardController = null;
 
+function imageFileUrl(filename) {
+    return `/images/${encodeURIComponent(filename)}`;
+}
+
 // 修改现有的图片加载相关函数
 async function loadImage(url) {
     try {
@@ -280,7 +284,7 @@ async function updateGridImages() {
                 const image = images[index % images.length];
 
                 if (image) {
-                    const imageUrl = `/images/${image}`;
+                    const imageUrl = imageFileUrl(image);
                     const loadedImg = await loadImage(imageUrl);
                     const frontImg = gridItem.querySelector('.front');
                     const backImg = gridItem.querySelector('.back');
@@ -314,7 +318,7 @@ async function updateRandomImages() {
         const currentImages = Array.from(gridItems).map(item => {
             const frontImg = item.querySelector('.front');
             const src = frontImg.src;
-            return src.includes('/images/') ? src.split('/images/')[1] : null;
+            return src.includes('/images/') ? decodeURIComponent(src.split('/images/')[1]) : null;
         });
 
         // Select positions to update
@@ -339,7 +343,7 @@ async function updateRandomImages() {
             const index = newImages.indexOf(selectedImage);
             if (index > -1) newImages.splice(index, 1);
 
-            const imageUrl = `/images/${selectedImage}`;
+            const imageUrl = imageFileUrl(selectedImage);
             try {
                 const loadedImg = await loadImage(imageUrl);
                 return { position, loadedImg, newImage: selectedImage };

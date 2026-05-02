@@ -1,6 +1,6 @@
 {
   "name": "CoverArt",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "description": "CoverArt",
   "main": "src/server.js",
   "author": "门耳朵制作",
@@ -12,13 +12,11 @@
     "start": "node src/server.js"
   },
   "dependencies": {
-    "body-parser": "^1.19.0",
-    "colorthief": "^2.4.0",
+    "body-parser": "^1.20.5",
     "command-line-args": "^5.1.1",
     "command-line-usage": "^6.1.0",
-    "config": "^3.3.1",
-    "express": "4.x",
-    "iconv-lite": "^0.7.1",
+    "config": "^3.3.12",
+    "express": "^4.22.1",
     "jquery": "^3.5.1",
     "js-cookie": "^2.2.1",
     "node-roon-api": "github:roonlabs/node-roon-api",
@@ -27,7 +25,7 @@
     "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
     "node-roon-api-status": "github:roonlabs/node-roon-api-status",
     "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
-    "socket.io": "^2.3.0"
+    "socket.io": "^4.8.3"
   },
   "repository": {
     "type": "git",

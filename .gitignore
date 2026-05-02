@@ -47,6 +47,7 @@ temp/
 # Application specific
 images/
 images_backup/
+config.json
 config/local.json
 
 # Docker local overrides

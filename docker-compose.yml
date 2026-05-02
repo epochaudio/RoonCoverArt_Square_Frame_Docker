@@ -1,13 +1,31 @@
 services:
   coverart:
-    container_name: coverart-app
-    image: epochaudio/coverart:latest
-    build: .
+    image: ${COVERART_IMAGE:-epochaudio/coverart:latest}
+    container_name: ${COVERART_CONTAINER_NAME:-coverart-app}
+    init: true
+    pull_policy: missing
     environment:
-      - ROON_PERSIST_PATH=/app/config.json
+      NODE_ENV: production
+      ROON_PERSIST_PATH: /app/config.json
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     network_mode: "host"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
-      - ./images:/app/images:rw
-      - ./config:/app/config:rw
-      - ./config.json:/app/config.json:rw
+      - type: bind
+        source: ./images
+        target: /app/images
+      - type: bind
+        source: ./config/local.json
+        target: /app/config/local.json
+        read_only: true
+      - type: bind
+        source: ./config.json
+        target: /app/config.json
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const config=require('config');const port=process.env.PORT||(config.has('server.port')?config.get('server.port'):3666);const req=http.get({host:'127.0.0.1',port,path:'/api/pair'},res=>process.exit(res.statusCode<500?0:1));req.setTimeout(3000,()=>{req.destroy();process.exit(1)});req.on('error',()=>process.exit(1));"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

@@ -6,10 +6,33 @@ const config = require('config');
 class ImageService {
     constructor() {
         this.saveDir = config.has('artwork.saveDir') ? config.get('artwork.saveDir') : './images';
+        this.format = this.normalizeFormat(config.has('artwork.format') ? config.get('artwork.format') : 'jpg');
         this.maxImages = 300;
         this.imageInfoFile = 'image_info.json';
         this.imageInfoCache = null;
         this.ensureDirectoryExists(this.saveDir);
+    }
+
+    normalizeFormat(format) {
+        const normalized = String(format || 'jpg').toLowerCase();
+        return normalized === 'png' ? 'png' : 'jpg';
+    }
+
+    get contentType() {
+        return this.format === 'png' ? 'image/png' : 'image/jpeg';
+    }
+
+    get extension() {
+        return this.format === 'png' ? 'png' : 'jpg';
+    }
+
+    getImageOptions(width, height) {
+        return {
+            scale: "fit",
+            width,
+            height,
+            format: this.contentType
+        };
     }
 
     async ensureDirectoryExists(directory) {
@@ -27,7 +50,7 @@ class ImageService {
     }
 
     sanitizeFilename(filename) {
-        return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+        return filename.replace(/[<>:"/\\|?*#%\x00-\x1F]/g, '_')
             .replace(/\s+/g, '_')
             .trim();
     }
@@ -147,7 +170,7 @@ class ImageService {
             await this.ensureDirectoryExists(this.saveDir);
 
             const sanitizedName = this.sanitizeFilename(albumName);
-            const filename = `${sanitizedName}.jpg`;
+            const filename = `${sanitizedName}.${this.extension}`;
             const filepath = path.join(this.saveDir, filename);
 
             const currentMD5 = await this.calculateMD5(imageBuffer);

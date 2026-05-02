@@ -1,5 +1,13 @@
 # Change Log
 
+## 3.1.5 (2026-05-02)
+
+- 移除版本控制中的本地 Roon 授权状态文件，新增安全的 `config.json.example`。
+- 升级生产依赖，降低 Express、Socket.IO、body-parser 和 config 相关安全风险。
+- 加强 HTTP/Socket.IO 跨源限制和播放控制消息校验。
+- 修复 `artwork.format` 配置未影响图片请求与保存扩展名的问题。
+- 优化 Dockerfile、Docker Compose 和 Docker 安装文档。
+
 ## 3.1.2 (2024-07-25)
 
 ### 新增

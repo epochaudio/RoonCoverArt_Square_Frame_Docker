@@ -65,32 +65,42 @@ docker pull epochaudio/coverart:latest
 #### Docker CLI 简化版：
 ```bash
 # 创建必要的配置目录
-mkdir -p /cache/Roonart/images
+mkdir -p /cache/Roonart/images /cache/Roonart/config
 cd /cache/Roonart
 # 创建配置文件（如果不存在）
-touch config.json
-echo '{}' > config.json
+test -f config.json || printf '{}\n' > config.json
+test -f config/local.json || printf '{\n  "server": {\n    "port": "3666"\n  }\n}\n' > config/local.json
 
 docker run -d \
   --name roon-coverart \
   --network host \
   --restart unless-stopped \
   -v $(pwd)/config.json:/app/config.json \
+  -v $(pwd)/config/local.json:/app/config/local.json:ro \
   -v $(pwd)/images:/app/images \
   epochaudio/coverart:latest
 ```
 
+`config.json` 用于保存 Roon 授权/配对状态，属于本地运行态文件，不应提交到 Git。
+
 #### Docker Compose 简化版：
 ```yaml
-version: '3'
 services:
   coverart:
-    image: epochaudio/coverart:latest
+    image: ${COVERART_IMAGE:-epochaudio/coverart:latest}
     container_name: roon-coverart
+    init: true
+    pull_policy: missing
+    environment:
+      NODE_ENV: production
+      ROON_PERSIST_PATH: /app/config.json
     network_mode: "host"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./images:/app/images:rw
+      - ./config/local.json:/app/config/local.json:ro
       - ./config.json:/app/config.json:rw
 ```
 
@@ -111,7 +121,7 @@ npm install
 ```
 4. 启动服务：
 ```bash
-node app.js
+npm start
 ```
 
 ## 配置说明
@@ -120,7 +130,7 @@ node app.js
 
 1. 命令行参数：
 ```bash
-node app.js -p 3000
+PORT=3000 npm start
 ```
 
 2. 配置文件：
@@ -128,7 +138,8 @@ node app.js -p 3000
 ```json
 {
   "server": {
-    "port": 3666
+    "port": 3666,
+    "allowedOrigins": []
   },
   "artwork": {
     "saveDir": "./images",
@@ -141,6 +152,7 @@ node app.js -p 3000
 ### 配置项说明
 
 - `server.port`: 服务器监听端口
+- `server.allowedOrigins`: 允许跨源访问的浏览器 Origin 列表，默认仅同源访问
 - `artwork.saveDir`: 专辑封面保存目录
 - `artwork.autoSave`: 是否自动保存专辑封面
 - `artwork.format`: 保存图片的格式（jpg/png）
@@ -185,7 +197,7 @@ node app.js -p 3000
    ```
    注意：这些命令需要在宿主机上执行，而不是在容器内。用户ID 1000对应容器内的node用户。
 
-2. Docker 安装时请确保正确映射配置文件和图片目录
+2. Docker 安装时请确保正确映射 `config.json`、`config/local.json` 和图片目录
 3. 建议使用 Chrome 或基于 Chromium 的浏览器以获得最佳体验
 
 ## 图片保存机制
@@ -223,6 +235,13 @@ node app.js -p 3000
 ```
 
 ## 更新记录
+
+### 3.1.5 (2026-05-02) 安全与部署优化
+- 移除本地 Roon 授权状态文件的版本控制，避免误提交配对 token
+- 升级生产依赖并降低主要 Express / Socket.IO 依赖风险
+- 加强跨源访问限制、Socket 控制消息校验和 Roon zone 订阅清理
+- 修复图片格式配置和特殊文件名加载问题
+- 优化 Dockerfile、Docker Compose 与 Docker 安装文档
 
 ### 3.1.3 (2025-12) 代码重构与优化
 - **后端重构**：将单体应用拆分为模块化服务（Server, Roon, Image, Socket），提升代码可维护性
