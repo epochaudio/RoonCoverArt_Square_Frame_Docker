@@ -157,7 +157,6 @@ docker run -d \
 
 - `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:latest`
 - `COVERART_CONTAINER_NAME`: 容器名，默认 `coverart-app`
-- `ALLOWED_ORIGINS`: 允许跨源浏览器访问的 Origin 列表，多个值用逗号分隔
 
 ## 11. 常见问题
 

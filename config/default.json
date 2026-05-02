@@ -1,7 +1,6 @@
 {
   "server": {
-    "port": "3666",
-    "allowedOrigins": []
+    "port": "3666"
   },
   "artwork": {
     "saveDir": "./images",

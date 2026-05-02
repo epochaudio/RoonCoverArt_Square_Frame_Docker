@@ -7,7 +7,6 @@ services:
     environment:
       NODE_ENV: production
       ROON_PERSIST_PATH: /app/config.json
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     network_mode: "host"
     restart: unless-stopped
     security_opt:

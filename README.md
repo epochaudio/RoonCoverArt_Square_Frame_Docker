@@ -138,8 +138,7 @@ PORT=3000 npm start
 ```json
 {
   "server": {
-    "port": 3666,
-    "allowedOrigins": []
+    "port": 3666
   },
   "artwork": {
     "saveDir": "./images",
@@ -152,7 +151,6 @@ PORT=3000 npm start
 ### 配置项说明
 
 - `server.port`: 服务器监听端口
-- `server.allowedOrigins`: 允许跨源访问的浏览器 Origin 列表，默认仅同源访问
 - `artwork.saveDir`: 专辑封面保存目录
 - `artwork.autoSave`: 是否自动保存专辑封面
 - `artwork.format`: 保存图片的格式（jpg/png）
@@ -239,7 +237,7 @@ PORT=3000 npm start
 ### 3.1.5 (2026-05-02) 安全与部署优化
 - 移除本地 Roon 授权状态文件的版本控制，避免误提交配对 token
 - 升级生产依赖并降低主要 Express / Socket.IO 依赖风险
-- 加强跨源访问限制、Socket 控制消息校验和 Roon zone 订阅清理
+- 加强 Socket 控制消息校验和 Roon zone 订阅清理
 - 修复图片格式配置和特殊文件名加载问题
 - 优化 Dockerfile、Docker Compose 与 Docker 安装文档
 

@@ -49,6 +49,7 @@ images/
 images_backup/
 config.json
 config/local.json
+REVIEW_FIX_PLAN.md
 
 # Docker local overrides
 docker-compose.override.yml
