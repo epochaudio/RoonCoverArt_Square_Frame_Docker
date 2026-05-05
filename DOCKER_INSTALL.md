@@ -21,7 +21,11 @@
 当前可用镜像（已发布）：
 
 - `epochaudio/coverart:latest`
-- `epochaudio/coverart:3.1.5`
+- `epochaudio/coverart:3.1.6`
+
+Docker Hub 标签页：
+
+- https://hub.docker.com/r/epochaudio/coverart/tags
 
 ## 3. 准备目录与文件
 
@@ -42,10 +46,10 @@ test -f config/local.json || printf '{\n  "server": {\n    "port": "3666"\n  }\n
 
 ## 4. 推荐方式：先拉取镜像，再用 Docker Compose 启动
 
-先拉取官方镜像（最简单、最快）：
+先拉取官方镜像（最简单、最快）。生产部署建议固定版本 `3.1.6`：
 
 ```bash
-docker pull epochaudio/coverart:latest
+docker pull epochaudio/coverart:3.1.6
 ```
 
 当前仓库的 `docker-compose.yml` 已包含运行已发布镜像所需的挂载、持久化、健康检查和基础安全设置。
@@ -53,7 +57,7 @@ docker pull epochaudio/coverart:latest
 启动：
 
 ```bash
-docker compose up -d
+COVERART_IMAGE=epochaudio/coverart:3.1.6 docker compose up -d
 ```
 
 查看日志：
@@ -74,7 +78,123 @@ docker compose ps
 docker compose down
 ```
 
-## 5. 首次使用（Roon 授权）
+## 5. 宿主机键盘控制（默认启用，无设备时 no-op）
+
+如果键盘插在运行 Docker 的宿主机上，可以让容器读取宿主机 `/dev/input` 事件并直接控制 Roon。键盘监听默认启用；没有发现键盘或设备打开失败时只输出 warning，不影响网页和 Roon 扩展启动。需要关闭时设置 `KEYBOARD_ENABLED=false`。
+
+先查询宿主机 `input` 组 GID：
+
+```bash
+getent group input
+```
+
+例如输出 `input:x:106:`，则在部署目录创建 `.env`：
+
+```bash
+INPUT_GID=106
+KEYBOARD_ENABLED=true
+KEYBOARD_CONTAINER_USER=node
+KEYBOARD_DEVICE=
+KEYBOARD_DEVICES=
+KEYBOARD_DEBOUNCE_MS=180
+```
+
+启动时叠加键盘控制配置：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.keyboard.yml up -d
+```
+
+默认不指定 `KEYBOARD_DEVICE` / `KEYBOARD_DEVICES` 时，程序会自动扫描并监听所有可识别的键盘事件设备，包括：
+
+- `/dev/input/by-id/`
+- `/dev/input/by-path/`
+- `/proc/bus/input/devices` 中带 `kbd` handler 的事件设备
+
+也可以显式指定一个或多个稳定路径：
+
+```bash
+KEYBOARD_DEVICE=/dev/input/by-id/your-keyboard-event-kbd
+KEYBOARD_DEVICES=/dev/input/by-id/kbd1-event-kbd,/dev/input/by-id/kbd2-event-kbd
+```
+
+优先使用 `/dev/input/by-id/...-event-kbd` 或 `/dev/input/by-path/...-event-kbd`，不要优先使用 `/dev/input/event3` 这类编号，因为重启后编号可能变化。可用下面命令查看：
+
+```bash
+ls -l /dev/input/by-id/
+ls -l /dev/input/by-path/
+```
+
+默认按键映射：
+
+- `KEY_RIGHT` / `KEY_NEXTSONG`: 下一曲
+- `KEY_LEFT` / `KEY_PREVIOUSSONG`: 上一曲
+- `KEY_SPACE` / `KEY_PLAYPAUSE`: 播放/暂停
+- `KEY_UP` / `KEY_PLAY`: 播放
+- `KEY_DOWN` / `KEY_STOP` / `KEY_STOPCD`: 停止
+- `KEY_PAUSE`: 暂停
+
+运行中插拔键盘时，如果没有自动识别新设备，执行：
+
+```bash
+docker restart roon-coverart
+```
+
+如果容器创建时宿主机没有 `/dev/input`，后续插入键盘后仍不可用，重新运行安装命令，让容器重新创建并挂载 input 目录。
+
+权限说明：
+
+- 常规 Linux 发行版通常会把 `/dev/input/event*` 设为 `root:input`，这时使用宿主机 `input` 组 GID，保持 `KEYBOARD_CONTAINER_USER=node` 即可。
+- 某些精简系统会把 `/dev/input/event*` 设为 `root:root` 且权限为 `0600`，没有可用的 `input` 组。这时可在 `.env` 中使用：
+
+```bash
+INPUT_GID=0
+KEYBOARD_CONTAINER_USER=root
+```
+
+此模式只读挂载 `/dev/input`，但容器进程会以 root 用户运行。仅在必须读取这类设备权限时使用。
+
+直接使用 `docker run` 时，需要等价加入 `input` 组、`/dev/input` 只读挂载和 input 设备 cgroup 规则，例如：
+
+```bash
+docker run -d \
+  --name coverart-app \
+  --restart unless-stopped \
+  --network host \
+  --group-add "$(getent group input | cut -d: -f3)" \
+  --device-cgroup-rule='c 13:* rwm' \
+  -e ROON_PERSIST_PATH=/app/config.json \
+  -e KEYBOARD_ENABLED=true \
+  -e KEYBOARD_DEBOUNCE_MS=180 \
+  -v /dev/input:/dev/input:ro \
+  -v "$(pwd)/images:/app/images" \
+  -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
+  -v "$(pwd)/config.json:/app/config.json" \
+  epochaudio/coverart:3.1.6
+```
+
+如果宿主机没有 `input` 组，或 `/dev/input/event*` 是 `root:root` 且权限为 `0600`，Docker CLI 可改用 root 读取只读输入设备：
+
+```bash
+docker run -d \
+  --name coverart-app \
+  --restart unless-stopped \
+  --network host \
+  --user root \
+  --device-cgroup-rule='c 13:* rwm' \
+  -e ROON_PERSIST_PATH=/app/config.json \
+  -e KEYBOARD_ENABLED=true \
+  -e KEYBOARD_DEBOUNCE_MS=180 \
+  -v /dev/input:/dev/input:ro \
+  -v "$(pwd)/images:/app/images" \
+  -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
+  -v "$(pwd)/config.json:/app/config.json" \
+  epochaudio/coverart:3.1.6
+```
+
+注意：启用后容器可以读取宿主机键盘事件。仅在可信宿主机和可信容器镜像上启用。
+
+## 6. 首次使用（Roon 授权）
 
 首次启动后需要在 Roon 中授权扩展：
 
@@ -87,7 +207,7 @@ docker compose down
 
 后续容器重启/升级时，只要 `./config.json` 仍然挂载并可写，就不需要重新授权。
 
-## 6. 修改端口（可选）
+## 7. 修改端口（可选）
 
 编辑 `config/local.json`，例如改为 `3667`：
 
@@ -105,23 +225,23 @@ docker compose down
 docker compose up -d
 ```
 
-## 7. 升级镜像（保留授权和图片）
+## 8. 升级镜像（保留授权和图片）
 
-如果使用 `latest`（推荐）：
+如果使用 `latest`：
 
 ```bash
 docker pull epochaudio/coverart:latest
 docker compose up -d
 ```
 
-如果你固定版本（例如 `3.1.5`），用 `COVERART_IMAGE` 指定镜像标签：
+推荐固定版本（例如 `3.1.6`），用 `COVERART_IMAGE` 指定镜像标签：
 
 ```bash
-docker pull epochaudio/coverart:3.1.5
-COVERART_IMAGE=epochaudio/coverart:3.1.5 docker compose up -d
+docker pull epochaudio/coverart:3.1.6
+COVERART_IMAGE=epochaudio/coverart:3.1.6 docker compose up -d
 ```
 
-## 8. 本地构建镜像（可选）
+## 9. 本地构建镜像（可选）
 
 如果需要基于当前源码构建镜像：
 
@@ -131,12 +251,12 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 本地构建会执行 `npm ci --omit=dev`，需要能访问 npm registry 和 GitHub 上的 Roon API 依赖。
 
-## 9. 不使用 Compose（可选）
+## 10. 不使用 Compose（可选）
 
 也可以直接先拉取镜像，再使用 `docker run`：
 
 ```bash
-docker pull epochaudio/coverart:latest
+docker pull epochaudio/coverart:3.1.6
 ```
 
 ```bash
@@ -148,19 +268,25 @@ docker run -d \
   -v "$(pwd)/images:/app/images" \
   -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
   -v "$(pwd)/config.json:/app/config.json" \
-  epochaudio/coverart:latest
+  epochaudio/coverart:3.1.6
 ```
 
-## 10. Compose 环境变量
+## 11. Compose 环境变量
 
 可按需设置：
 
-- `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:latest`
+- `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:3.1.6`
 - `COVERART_CONTAINER_NAME`: 容器名，默认 `coverart-app`
+- `INPUT_GID`: 使用 `docker-compose.keyboard.yml` 时必填，宿主机 `input` 组 GID
+- `KEYBOARD_ENABLED`: 宿主机键盘控制开关，默认 `true`；设为 `false` 可关闭
+- `KEYBOARD_CONTAINER_USER`: 启用键盘控制时的容器用户，默认 `node`；设备为 `root:root 0600` 时可设为 `root`
+- `KEYBOARD_DEVICE`: 单个键盘事件设备路径
+- `KEYBOARD_DEVICES`: 多个键盘事件设备路径，逗号分隔
+- `KEYBOARD_DEBOUNCE_MS`: 按键去抖时间，默认 `180`
 
-## 11. 常见问题
+## 12. 常见问题
 
-### 11.1 每次重启都要重新授权
+### 12.1 每次重启都要重新授权
 
 检查以下几点：
 
@@ -174,14 +300,14 @@ docker run -d \
 ls -l config.json
 ```
 
-### 11.2 改了 `config.json` 里的端口但不生效
+### 12.2 改了 `config.json` 里的端口但不生效
 
 这是正常现象。
 
 - `config.json` 是 Roon 授权状态文件
 - 应用端口应写在 `config/local.json`
 
-### 11.3 macOS / Windows 上 `host` 网络模式不可用
+### 12.3 macOS / Windows 上 `host` 网络模式不可用
 
 当前配置使用 `network_mode: "host"`（Linux 环境最方便）。
 

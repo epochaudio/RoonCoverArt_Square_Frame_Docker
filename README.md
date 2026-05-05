@@ -35,12 +35,14 @@
    - 支持JPG/PNG格式配置
 
 5. **键盘快捷键控制**
+   - 浏览器页面获得焦点时支持快捷键控制
    - 空格键 - 播放/暂停切换
    - ←/→箭头键 - 上一曲/下一曲  
    - P键 - 播放
    - ESC键 - 停止
    - 媒体键 - 支持键盘上的媒体控制键
    - MediaSession API集成，支持操作系统级媒体控制
+   - 宿主机键盘控制：Docker 容器可读取宿主机 `/dev/input` 键盘事件；没有设备时自动 no-op，可用 `KEYBOARD_ENABLED=false` 关闭
 
 6. **连接管理**
    - 自动重连机制
@@ -56,9 +58,15 @@
 
 - `DOCKER_INSTALL.md`
 
-推荐方式：先拉取官方镜像，再按文档使用 `docker compose` 或 `docker run` 启动：
+镜像仓库：
+
+- https://hub.docker.com/r/epochaudio/coverart/tags
+
+推荐方式：先拉取官方镜像，再按文档使用 `docker compose` 或 `docker run` 启动。生产部署建议固定版本 `3.1.6`：
 
 ```bash
+docker pull epochaudio/coverart:3.1.6
+# 或始终使用最新标签
 docker pull epochaudio/coverart:latest
 ```
 
@@ -78,16 +86,52 @@ docker run -d \
   -v $(pwd)/config.json:/app/config.json \
   -v $(pwd)/config/local.json:/app/config/local.json:ro \
   -v $(pwd)/images:/app/images \
-  epochaudio/coverart:latest
+  epochaudio/coverart:3.1.6
 ```
 
 `config.json` 用于保存 Roon 授权/配对状态，属于本地运行态文件，不应提交到 Git。
+
+如需在 Docker CLI 方式下使用宿主机键盘控制，需要额外加入宿主机 `input` 组、`/dev/input` 只读挂载和 input 设备 cgroup 规则。`KEYBOARD_ENABLED` 默认就是 `true`，下面显式写出便于覆盖：
+
+```bash
+docker run -d \
+  --name roon-coverart \
+  --network host \
+  --restart unless-stopped \
+  --group-add "$(getent group input | cut -d: -f3)" \
+  --device-cgroup-rule='c 13:* rwm' \
+  -e KEYBOARD_ENABLED=true \
+  -e KEYBOARD_DEBOUNCE_MS=180 \
+  -v /dev/input:/dev/input:ro \
+  -v $(pwd)/config.json:/app/config.json \
+  -v $(pwd)/config/local.json:/app/config/local.json:ro \
+  -v $(pwd)/images:/app/images \
+  epochaudio/coverart:3.1.6
+```
+
+如果宿主机没有 `input` 组，或 `/dev/input/event*` 是 `root:root` 且权限为 `0600`，上面的 `--group-add` 不会生效。此时可让容器以 root 用户读取只读输入设备：
+
+```bash
+docker run -d \
+  --name roon-coverart \
+  --network host \
+  --restart unless-stopped \
+  --user root \
+  --device-cgroup-rule='c 13:* rwm' \
+  -e KEYBOARD_ENABLED=true \
+  -e KEYBOARD_DEBOUNCE_MS=180 \
+  -v /dev/input:/dev/input:ro \
+  -v $(pwd)/config.json:/app/config.json \
+  -v $(pwd)/config/local.json:/app/config/local.json:ro \
+  -v $(pwd)/images:/app/images \
+  epochaudio/coverart:3.1.6
+```
 
 #### Docker Compose 简化版：
 ```yaml
 services:
   coverart:
-    image: ${COVERART_IMAGE:-epochaudio/coverart:latest}
+    image: ${COVERART_IMAGE:-epochaudio/coverart:3.1.6}
     container_name: roon-coverart
     init: true
     pull_policy: missing
@@ -104,9 +148,58 @@ services:
       - ./config.json:/app/config.json:rw
 ```
 
+#### 宿主机键盘控制（默认启用，无设备时 no-op）
+
+如果键盘插在运行 Docker 的宿主机上，容器读取 `/dev/input` 事件后可以直接控制 Roon。键盘监听默认启用；没有发现键盘或设备打开失败时只输出 warning，不影响网页和 Roon 扩展启动。需要关闭时设置 `KEYBOARD_ENABLED=false`。
+
+先查询宿主机 `input` 组 GID：
+
+```bash
+getent group input
+```
+
+例如输出 `input:x:106:`，则在部署目录创建 `.env`：
+
+```bash
+INPUT_GID=106
+KEYBOARD_ENABLED=true
+KEYBOARD_CONTAINER_USER=node
+KEYBOARD_DEVICE=
+KEYBOARD_DEVICES=
+KEYBOARD_DEBOUNCE_MS=180
+```
+
+启动时叠加键盘控制配置：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.keyboard.yml up -d
+```
+
+默认不指定 `KEYBOARD_DEVICE` / `KEYBOARD_DEVICES` 时，会自动扫描 `/dev/input/by-id/`、`/dev/input/by-path/` 和 `/proc/bus/input/devices` 中可识别的键盘事件设备。也可以显式指定稳定路径，例如：
+
+```bash
+KEYBOARD_DEVICE=/dev/input/by-id/your-keyboard-event-kbd
+KEYBOARD_DEVICES=/dev/input/by-id/kbd1-event-kbd,/dev/input/by-id/kbd2-event-kbd
+```
+
+优先使用 `/dev/input/by-id/...-event-kbd` 或 `/dev/input/by-path/...-event-kbd`，不要优先使用 `/dev/input/event3` 这类编号，因为重启后编号可能变化。
+
+运行中插拔键盘时，如果没有自动识别新设备，执行：
+
+```bash
+docker restart roon-coverart
+```
+
+如果宿主机没有 `input` 组，或 `/dev/input/event*` 是 `root:root` 且权限为 `0600`，可以在 `.env` 中改用：
+
+```bash
+INPUT_GID=0
+KEYBOARD_CONTAINER_USER=root
+```
+
 #### 🎯 优势
 
-1. **无需手动权限设置** - Dockerfile已处理所有权限问题
+1. **普通部署无需手动权限设置** - Dockerfile已处理应用目录权限
 2. **简化部署流程** - 减少用户操作步骤
 3. **安全性增强** - 以非root用户运行
 4. **一致性保证** - 消除环境差异导致的权限问题
@@ -233,6 +326,9 @@ PORT=3000 npm start
 ```
 
 ## 更新记录
+
+### 3.1.6 (2026-05-05) 宿主机键盘控制
+- 增加宿主机键盘控制，可从 Docker 容器读取 `/dev/input` 键盘事件控制 Roon；没有设备时自动 no-op，可用 `KEYBOARD_ENABLED=false` 关闭
 
 ### 3.1.5 (2026-05-02) 安全与部署优化
 - 移除本地 Roon 授权状态文件的版本控制，避免误提交配对 token

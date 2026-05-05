@@ -28,7 +28,7 @@ class RoonService extends EventEmitter {
         this.roon = new RoonApi({
             extension_id: "com.epochaudio.coverart",
             display_name: "CoverArt_Square_Docker",
-            display_version: "3.1.5",
+            display_version: "3.1.6",
             publisher: "门耳朵制作",
             email: "masked",
             website: "https://shop236654229.taobao.com/",

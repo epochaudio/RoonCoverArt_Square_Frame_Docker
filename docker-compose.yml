@@ -1,6 +1,6 @@
 services:
   coverart:
-    image: ${COVERART_IMAGE:-epochaudio/coverart:latest}
+    image: ${COVERART_IMAGE:-epochaudio/coverart:3.1.6}
     container_name: ${COVERART_CONTAINER_NAME:-coverart-app}
     init: true
     pull_policy: missing

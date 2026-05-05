@@ -1,0 +1,17 @@
+services:
+  coverart:
+    user: ${KEYBOARD_CONTAINER_USER:-node}
+    environment:
+      KEYBOARD_ENABLED: ${KEYBOARD_ENABLED:-true}
+      KEYBOARD_DEVICE: ${KEYBOARD_DEVICE:-}
+      KEYBOARD_DEVICES: ${KEYBOARD_DEVICES:-}
+      KEYBOARD_DEBOUNCE_MS: ${KEYBOARD_DEBOUNCE_MS:-180}
+    group_add:
+      - "${INPUT_GID:?Set INPUT_GID to the host input group GID, for example INPUT_GID=106}"
+    volumes:
+      - type: bind
+        source: /dev/input
+        target: /dev/input
+        read_only: true
+    device_cgroup_rules:
+      - "c 13:* rwm"

@@ -10,6 +10,7 @@ const socketIO = require('socket.io');
 const apiRoutes = require('./routes/api');
 const roonService = require('./services/roonService');
 const socketService = require('./services/socketService');
+const keyboardService = require('./services/keyboardService');
 
 // Setup process
 process.chdir(path.join(__dirname, '..')); // Move to root if running from src
@@ -62,6 +63,7 @@ app.get("/", (req, res) => res.sendFile(path.resolve(__dirname, "../public/index
 // Init Services
 socketService.init(io);
 roonService.start();
+keyboardService.start();
 
 // Start Server
 server.listen(listenPort, () => {

@@ -1,5 +1,15 @@
 # Change Log
 
+## 3.1.6 (2026-05-05)
+
+- 发布 Docker 镜像 `epochaudio/coverart:3.1.6`，并同步 `latest` 标签。
+- 增加宿主机键盘控制，容器可读取 `/dev/input` 键盘事件并直接控制 Roon 播放。
+- 键盘监听默认启用；没有键盘设备或设备打开失败时只输出 warning，不影响网页和 Roon 扩展启动；可用 `KEYBOARD_ENABLED=false` 关闭。
+- 支持自动扫描 `/dev/input/by-id/`、`/dev/input/by-path/` 和 `/proc/bus/input/devices` 中的键盘事件设备。
+- 支持 `KEYBOARD_DEVICE` / `KEYBOARD_DEVICES` 指定稳定键盘事件路径，并支持 `KEYBOARD_DEBOUNCE_MS` 调整按键去抖。
+- 新增 `docker-compose.keyboard.yml`，挂载宿主机 `/dev/input` 并配置 `c 13:* rwm`，便于热插拔后重启容器识别新 input 设备。
+- 更新 README 与 Docker 安装指南，补充 Docker Hub 标签页、固定版本安装、宿主机键盘控制、精简系统 `root:root 0600` 输入设备的部署方式。
+
 ## 3.1.5 (2026-05-02)
 
 - 移除版本控制中的本地 Roon 授权状态文件，新增安全的 `config.json.example`。
