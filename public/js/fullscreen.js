@@ -6,6 +6,7 @@ let currentImageKey = null;
 let updateInterval = null;
 let playbackTimer = null;
 const GRID_UPDATE_INTERVAL = 120000; // 120秒更新周期
+const GRID_FALLBACK_DELAY_MS = 15000; // 暂停/停止15秒后切回封面墙
 const IMAGES_TO_UPDATE = 3; // 每次更新3张图片
 
 // 设置相关
@@ -547,7 +548,7 @@ socket.on('zoneStatus', function (payload) {
         // 处理非播放状态（paused, stopped等）
         if (zone.state && zone.state !== 'playing') {
             console.log('检测到非播放状态:', zone.state);
-            scheduleGridDisplayFallback(5000);
+            scheduleGridDisplayFallback(GRID_FALLBACK_DELAY_MS);
         }
     } else {
         console.log('未收到区域信息或区域列表为空');
@@ -557,7 +558,7 @@ socket.on('zoneStatus', function (payload) {
 socket.on('notPlaying', function (data) {
     console.log('收到非播放状态事件:', data);
     try {
-        scheduleGridDisplayFallback(5000); // 5秒后切换到网格显示
+        scheduleGridDisplayFallback(GRID_FALLBACK_DELAY_MS);
     } catch (error) {
         console.error('处理非播放状态事件时出错:', error);
     }
