@@ -1,5 +1,10 @@
 # Change Log
 
+## 3.1.7 (2026-05-09)
+
+- 版本号升级到 `3.1.7`。
+- 宿主机物理键新增 `KEY_VOLUMEUP`、`KEY_VOLUMEDOWN`、`KEY_MUTE` 映射，用于 Roon 音量加减和静音切换。
+
 ## 3.1.6 (2026-05-05)
 
 - 发布 Docker 镜像 `epochaudio/coverart:3.1.6`，并同步 `latest` 标签。

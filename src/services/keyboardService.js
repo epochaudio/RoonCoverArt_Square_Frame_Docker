@@ -22,6 +22,9 @@ const KEY_CODES = {
     KEY_LEFT: 105,
     KEY_RIGHT: 106,
     KEY_DOWN: 108,
+    KEY_MUTE: 113,
+    KEY_VOLUMEDOWN: 114,
+    KEY_VOLUMEUP: 115,
     KEY_PAUSE: 119,
     KEY_STOP: 128,
     KEY_NEXTSONG: 163,
@@ -49,6 +52,15 @@ const KEY_COMMANDS = new Map([
     [KEY_CODES.KEY_STOP, 'stop'],
     [KEY_CODES.KEY_STOPCD, 'stop'],
     [KEY_CODES.KEY_PAUSE, 'pause']
+]);
+
+const KEY_VOLUME_DIRECTIONS = new Map([
+    [KEY_CODES.KEY_VOLUMEUP, 1],
+    [KEY_CODES.KEY_VOLUMEDOWN, -1]
+]);
+
+const KEY_MUTE_TOGGLES = new Set([
+    KEY_CODES.KEY_MUTE
 ]);
 
 function isEnabled(value) {
@@ -233,11 +245,19 @@ class KeyboardService {
         if (value !== KEY_PRESSED) return;
 
         const command = KEY_COMMANDS.get(code);
-        if (!command) return;
+        const volumeDirection = KEY_VOLUME_DIRECTIONS.get(code);
+        const isMuteToggle = KEY_MUTE_TOGGLES.has(code);
+        if (!command && !volumeDirection && !isMuteToggle) return;
 
         if (this.isDebounced(code)) return;
 
-        this.dispatchCommand(command, code, device.path);
+        if (command) {
+            this.dispatchCommand(command, code, device.path);
+        } else if (volumeDirection) {
+            this.dispatchVolumeChange(volumeDirection, code, device.path);
+        } else {
+            this.dispatchMuteToggle(code, device.path);
+        }
     }
 
     isDebounced(code) {
@@ -268,12 +288,83 @@ class KeyboardService {
         console.log(`Host keyboard ${keyName} from ${devicePath} -> ${command} (${zone.display_name || zone.zone_id})`);
     }
 
+    dispatchVolumeChange(direction, code, devicePath) {
+        const target = this.getControlOutput();
+        if (!target) {
+            this.warnControlUnavailable('No Roon output with volume control is available for host keyboard control.');
+            return;
+        }
+
+        const volumeChange = this.getVolumeChange(target.output, direction);
+        const controlled = roonService.changeVolume(target.output.output_id, volumeChange.mode, volumeChange.value);
+        if (!controlled) {
+            this.warnControlUnavailable('Roon volume control is not ready for host keyboard control.');
+            return;
+        }
+
+        const keyName = KEY_NAMES[code] || `KEY_${code}`;
+        const action = direction > 0 ? 'volume up' : 'volume down';
+        console.log(`Host keyboard ${keyName} from ${devicePath} -> ${action} (${target.output.display_name || target.output.output_id})`);
+    }
+
+    dispatchMuteToggle(code, devicePath) {
+        const target = this.getControlOutput();
+        if (!target) {
+            this.warnControlUnavailable('No Roon output with mute control is available for host keyboard control.');
+            return;
+        }
+
+        if (typeof target.output.volume.is_muted !== 'boolean') {
+            this.warnControlUnavailable('Selected Roon output does not report mute state for host keyboard control.');
+            return;
+        }
+
+        const muteAction = target.output.volume.is_muted ? 'unmute' : 'mute';
+        const controlled = roonService.muteOutput(target.output.output_id, muteAction);
+        if (!controlled) {
+            this.warnControlUnavailable('Roon mute control is not ready for host keyboard control.');
+            return;
+        }
+
+        const keyName = KEY_NAMES[code] || `KEY_${code}`;
+        console.log(`Host keyboard ${keyName} from ${devicePath} -> ${muteAction} (${target.output.display_name || target.output.output_id})`);
+    }
+
     getControlZone() {
         const selectedZone = roonService.getSelectedZone();
         if (selectedZone) return selectedZone;
 
         const visibleZones = roonService.getVisibleZones();
         return visibleZones.length > 0 ? visibleZones[0] : null;
+    }
+
+    getControlOutput() {
+        const zone = this.getControlZone();
+        const outputs = zone && Array.isArray(zone.outputs) ? zone.outputs : [];
+        const volumeOutputs = outputs.filter(output => output && output.output_id && output.volume);
+        if (volumeOutputs.length === 0) return null;
+
+        const selectedOutputId = roonService.getSelectedOutputId();
+        const selectedOutput = selectedOutputId
+            ? volumeOutputs.find(output => output.output_id === selectedOutputId)
+            : null;
+
+        return {
+            zone,
+            output: selectedOutput || volumeOutputs[0]
+        };
+    }
+
+    getVolumeChange(output, direction) {
+        if (output.volume.type === 'incremental') {
+            return { mode: 'relative', value: direction };
+        }
+
+        if (Number.isFinite(output.volume.step)) {
+            return { mode: 'relative_step', value: direction };
+        }
+
+        return { mode: 'relative', value: direction };
     }
 
     warnControlUnavailable(message) {

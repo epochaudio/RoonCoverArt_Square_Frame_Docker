@@ -139,7 +139,7 @@ const app = {
     ClockManager,
     utils,
     config: {
-        version: '3.1.6'
+        version: '3.1.7'
     }
 };
 

@@ -21,7 +21,7 @@
 当前可用镜像（已发布）：
 
 - `epochaudio/coverart:latest`
-- `epochaudio/coverart:3.1.6`
+- `epochaudio/coverart:3.1.7`
 
 Docker Hub 标签页：
 
@@ -46,10 +46,10 @@ test -f config/local.json || printf '{\n  "server": {\n    "port": "3666"\n  }\n
 
 ## 4. 推荐方式：先拉取镜像，再用 Docker Compose 启动
 
-先拉取官方镜像（最简单、最快）。生产部署建议固定版本 `3.1.6`：
+先拉取官方镜像（最简单、最快）。生产部署建议固定版本 `3.1.7`：
 
 ```bash
-docker pull epochaudio/coverart:3.1.6
+docker pull epochaudio/coverart:3.1.7
 ```
 
 当前仓库的 `docker-compose.yml` 已包含运行已发布镜像所需的挂载、持久化、健康检查和基础安全设置。
@@ -57,7 +57,7 @@ docker pull epochaudio/coverart:3.1.6
 启动：
 
 ```bash
-COVERART_IMAGE=epochaudio/coverart:3.1.6 docker compose up -d
+COVERART_IMAGE=epochaudio/coverart:3.1.7 docker compose up -d
 ```
 
 查看日志：
@@ -133,6 +133,9 @@ ls -l /dev/input/by-path/
 - `KEY_UP` / `KEY_PLAY`: 播放
 - `KEY_DOWN` / `KEY_STOP` / `KEY_STOPCD`: 停止
 - `KEY_PAUSE`: 暂停
+- `KEY_VOLUMEUP`: 音量加
+- `KEY_VOLUMEDOWN`: 音量减
+- `KEY_MUTE`: 静音/取消静音
 
 运行中插拔键盘时，如果没有自动识别新设备，执行：
 
@@ -170,7 +173,7 @@ docker run -d \
   -v "$(pwd)/images:/app/images" \
   -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
   -v "$(pwd)/config.json:/app/config.json" \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 如果宿主机没有 `input` 组，或 `/dev/input/event*` 是 `root:root` 且权限为 `0600`，Docker CLI 可改用 root 读取只读输入设备：
@@ -189,7 +192,7 @@ docker run -d \
   -v "$(pwd)/images:/app/images" \
   -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
   -v "$(pwd)/config.json:/app/config.json" \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 注意：启用后容器可以读取宿主机键盘事件。仅在可信宿主机和可信容器镜像上启用。
@@ -234,11 +237,11 @@ docker pull epochaudio/coverart:latest
 docker compose up -d
 ```
 
-推荐固定版本（例如 `3.1.6`），用 `COVERART_IMAGE` 指定镜像标签：
+推荐固定版本（例如 `3.1.7`），用 `COVERART_IMAGE` 指定镜像标签：
 
 ```bash
-docker pull epochaudio/coverart:3.1.6
-COVERART_IMAGE=epochaudio/coverart:3.1.6 docker compose up -d
+docker pull epochaudio/coverart:3.1.7
+COVERART_IMAGE=epochaudio/coverart:3.1.7 docker compose up -d
 ```
 
 ## 9. 本地构建镜像（可选）
@@ -256,7 +259,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 也可以直接先拉取镜像，再使用 `docker run`：
 
 ```bash
-docker pull epochaudio/coverart:3.1.6
+docker pull epochaudio/coverart:3.1.7
 ```
 
 ```bash
@@ -268,14 +271,14 @@ docker run -d \
   -v "$(pwd)/images:/app/images" \
   -v "$(pwd)/config/local.json:/app/config/local.json:ro" \
   -v "$(pwd)/config.json:/app/config.json" \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 ## 11. Compose 环境变量
 
 可按需设置：
 
-- `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:3.1.6`
+- `COVERART_IMAGE`: 镜像标签，默认 `epochaudio/coverart:3.1.7`
 - `COVERART_CONTAINER_NAME`: 容器名，默认 `coverart-app`
 - `INPUT_GID`: 使用 `docker-compose.keyboard.yml` 时必填，宿主机 `input` 组 GID
 - `KEYBOARD_ENABLED`: 宿主机键盘控制开关，默认 `true`；设为 `false` 可关闭

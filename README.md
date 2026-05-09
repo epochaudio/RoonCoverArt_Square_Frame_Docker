@@ -62,10 +62,10 @@
 
 - https://hub.docker.com/r/epochaudio/coverart/tags
 
-推荐方式：先拉取官方镜像，再按文档使用 `docker compose` 或 `docker run` 启动。生产部署建议固定版本 `3.1.6`：
+推荐方式：先拉取官方镜像，再按文档使用 `docker compose` 或 `docker run` 启动。生产部署建议固定版本 `3.1.7`：
 
 ```bash
-docker pull epochaudio/coverart:3.1.6
+docker pull epochaudio/coverart:3.1.7
 # 或始终使用最新标签
 docker pull epochaudio/coverart:latest
 ```
@@ -86,7 +86,7 @@ docker run -d \
   -v $(pwd)/config.json:/app/config.json \
   -v $(pwd)/config/local.json:/app/config/local.json:ro \
   -v $(pwd)/images:/app/images \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 `config.json` 用于保存 Roon 授权/配对状态，属于本地运行态文件，不应提交到 Git。
@@ -106,7 +106,7 @@ docker run -d \
   -v $(pwd)/config.json:/app/config.json \
   -v $(pwd)/config/local.json:/app/config/local.json:ro \
   -v $(pwd)/images:/app/images \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 如果宿主机没有 `input` 组，或 `/dev/input/event*` 是 `root:root` 且权限为 `0600`，上面的 `--group-add` 不会生效。此时可让容器以 root 用户读取只读输入设备：
@@ -124,14 +124,14 @@ docker run -d \
   -v $(pwd)/config.json:/app/config.json \
   -v $(pwd)/config/local.json:/app/config/local.json:ro \
   -v $(pwd)/images:/app/images \
-  epochaudio/coverart:3.1.6
+  epochaudio/coverart:3.1.7
 ```
 
 #### Docker Compose 简化版：
 ```yaml
 services:
   coverart:
-    image: ${COVERART_IMAGE:-epochaudio/coverart:3.1.6}
+    image: ${COVERART_IMAGE:-epochaudio/coverart:3.1.7}
     container_name: roon-coverart
     init: true
     pull_policy: missing
@@ -183,6 +183,18 @@ KEYBOARD_DEVICES=/dev/input/by-id/kbd1-event-kbd,/dev/input/by-id/kbd2-event-kbd
 ```
 
 优先使用 `/dev/input/by-id/...-event-kbd` 或 `/dev/input/by-path/...-event-kbd`，不要优先使用 `/dev/input/event3` 这类编号，因为重启后编号可能变化。
+
+默认按键映射：
+
+- `KEY_RIGHT` / `KEY_NEXTSONG`: 下一曲
+- `KEY_LEFT` / `KEY_PREVIOUSSONG`: 上一曲
+- `KEY_SPACE` / `KEY_PLAYPAUSE`: 播放/暂停
+- `KEY_UP` / `KEY_PLAY`: 播放
+- `KEY_DOWN` / `KEY_STOP` / `KEY_STOPCD`: 停止
+- `KEY_PAUSE`: 暂停
+- `KEY_VOLUMEUP`: 音量加
+- `KEY_VOLUMEDOWN`: 音量减
+- `KEY_MUTE`: 静音/取消静音
 
 运行中插拔键盘时，如果没有自动识别新设备，执行：
 
@@ -326,6 +338,10 @@ PORT=3000 npm start
 ```
 
 ## 更新记录
+
+### 3.1.7 (2026-05-09) 宿主机键盘音量控制
+- 宿主机物理键新增音量控制：`KEY_VOLUMEUP`、`KEY_VOLUMEDOWN`、`KEY_MUTE`
+- 版本号升级到 3.1.7
 
 ### 3.1.6 (2026-05-05) 宿主机键盘控制
 - 增加宿主机键盘控制，可从 Docker 容器读取 `/dev/input` 键盘事件控制 Roon；没有设备时自动 no-op，可用 `KEYBOARD_ENABLED=false` 关闭

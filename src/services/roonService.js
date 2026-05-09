@@ -10,6 +10,8 @@ const path = require('path');
 
 const TRANSPORT_SERVICE = "com.roonlabs.transport:2";
 const TRANSPORT_COMMANDS = new Set(['playpause', 'play', 'pause', 'stop', 'previous', 'next']);
+const VOLUME_MODES = new Set(['absolute', 'relative', 'relative_step']);
+const MUTE_COMMANDS = new Set(['mute', 'unmute']);
 
 class RoonService extends EventEmitter {
     constructor() {
@@ -28,7 +30,7 @@ class RoonService extends EventEmitter {
         this.roon = new RoonApi({
             extension_id: "com.epochaudio.coverart",
             display_name: "CoverArt_Square_Docker",
-            display_version: "3.1.6",
+            display_version: "3.1.7",
             publisher: "门耳朵制作",
             email: "masked",
             website: "https://shop236654229.taobao.com/",
@@ -300,6 +302,10 @@ class RoonService extends EventEmitter {
         return this.zoneStatus.find(z => this.isSelectedZone(z)) || null;
     }
 
+    getSelectedOutputId() {
+        return this.settings && this.settings.output ? this.settings.output.output_id : null;
+    }
+
     getVisibleZones() {
         if (!this.core || !this.transport) return [];
         const selectedZone = this.getSelectedZone();
@@ -323,8 +329,14 @@ class RoonService extends EventEmitter {
     }
 
     changeVolume(outputId, mode, value) {
-        if (!this.transport || !outputId || !Number.isFinite(value)) return false;
+        if (!this.transport || !outputId || !VOLUME_MODES.has(mode) || !Number.isFinite(value)) return false;
         this.transport.change_volume(outputId, mode, value);
+        return true;
+    }
+
+    muteOutput(outputId, how) {
+        if (!this.transport || !outputId || !MUTE_COMMANDS.has(how)) return false;
+        this.transport.mute(outputId, how);
         return true;
     }
 
